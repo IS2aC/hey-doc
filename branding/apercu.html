@@ -3,60 +3,73 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Hey-Doc · Aperçu du résultat d’ordonnance</title>
-  <link rel="icon" href="actifs/symbole.svg">
+  <title>Hey-Doc · Aperçu du chat</title>
+  <link rel="icon" href="heydoc-mascotte.svg" type="image/svg+xml">
   <link rel="stylesheet" href="theme.css">
-  <style>
-    * { box-sizing: border-box; }
-    body { margin: 0; background: var(--color-page); color: var(--color-ink); font: 1rem/1.5 var(--font-body); }
-    header, main { width: min(100% - 2rem, 38rem); margin-inline: auto; }
-    header { padding-block: var(--space-3); border-bottom: 1px solid var(--color-border); }
-    img { display: block; width: 152px; height: auto; }
-    main { padding-block: var(--space-4); }
-    h1, h2 { margin: 0; font-family: var(--font-display); font-weight: 500; line-height: 1.12; }
-    h1 { font-size: clamp(2rem, 7vw, 3.25rem); }
-    h2 { font-size: 1.4rem; }
-    p { margin: 0; }
-    .context, .source { color: var(--color-muted); margin-block-start: var(--space-1); }
-    .total, .card { border-radius: var(--radius-card); margin-block-start: var(--space-2); padding: var(--space-3); }
-    .total { background: var(--color-brand); color: var(--color-surface); }
-    .total strong { display: block; color: var(--color-accent); font-size: clamp(1.9rem, 8vw, 3rem); }
-    strong { font-variant-numeric: tabular-nums; }
-    .card { background: var(--color-surface); border: 1px solid var(--color-border); }
-    dl { margin-block: var(--space-2); }
-    dl div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: var(--space-1); padding-block: var(--space-1); }
-    dl div + div { border-top: 1px solid var(--color-border); }
-    dt small { display: block; color: var(--color-muted); }
-    dd { margin: 0; }
-    .warning { padding: var(--space-2); border-radius: .5rem; background: var(--color-warning-bg); color: var(--color-warning); }
-    details { margin-block-start: var(--space-2); }
-    summary { width: fit-content; min-height: 44px; padding: .6rem 1rem; border-radius: .5rem; background: var(--color-brand); color: white; font-weight: 650; cursor: pointer; }
-    summary:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 4px; }
-  </style>
+  <link rel="stylesheet" href="apercu.css">
 </head>
 <body>
-  <header><img src="actifs/logo.svg" width="280" height="64" alt="Hey-Doc"></header>
-  <main>
-    <h1>Estimation de votre ordonnance</h1>
-    <p class="context">Exemple fictif · Prix comptant · Yopougon</p>
-    <section class="total" aria-labelledby="total">
-      <h2 id="total">Sous-total</h2>
-      <strong>6 100 FCFA</strong>
-      <p>2 lignes chiffrées sur 3</p>
+  <header class="top">
+    <div class="brand"><img src="heydoc-mascotte.svg" alt="" width="50" height="50"><span>Hey-Doc</span></div>
+    <p>Aperçu de marque · Données fictives</p>
+  </header>
+  <main class="layout">
+    <section class="intro" aria-labelledby="headline">
+      <div class="intro-copy">
+        <h1 id="headline">Votre ordonnance,<br> votre budget<span>.</span></h1>
+        <p>Estimez ce que vous paierez en pharmacie et trouvez une officine de garde près de chez vous.</p>
+      </div>
+      <div class="mascot"><img src="heydoc-mascotte.svg" alt="La mascotte Hey-Doc, avec son bandana turquoise" width="360" height="360"></div>
     </section>
-    <section class="card" aria-labelledby="lines">
-      <h2 id="lines">Produits sur l’ordonnance</h2>
-      <dl>
-        <div><dt>Produit A · 500 mg<small>1 boîte à 2 500 FCFA</small></dt><dd><strong>2 500 FCFA</strong></dd></div>
-        <div><dt>Produit B · 20 mg<small>2 boîtes à 1 800 FCFA</small></dt><dd><strong>3 600 FCFA</strong></dd></div>
-      </dl>
-      <p class="warning"><strong>Ligne 3 à confirmer.</strong> Faites vérifier le nom du produit par le pharmacien.</p>
-      <p class="source">Source de l’exemple · relevé fictif du 22 novembre 2026</p>
+    <section class="chat" aria-labelledby="chat-title">
+      <header class="chat-head">
+        <img src="heydoc-mascotte.svg" alt="" width="48" height="48">
+        <div><h2 id="chat-title">Hey-Doc</h2><p>Assistant pharmacie</p></div>
+      </header>
+      <nav class="routes" aria-label="Parcours de démonstration">
+        <button type="button" aria-pressed="true" aria-controls="ordonnance" data-panel="ordonnance">Mon ordonnance</button>
+        <button type="button" aria-pressed="false" aria-controls="garde" data-panel="garde">Pharmacie de garde</button>
+      </nav>
+      <div class="panel" id="ordonnance">
+        <p class="bubble">J’ai retrouvé deux produits et une ligne à faire confirmer.</p>
+        <article class="result">
+          <div class="amount">
+            <div><h3>Sous-total sans bon</h3><p>2 lignes chiffrées sur 3</p></div>
+            <strong>6 100 <small>FCFA</small></strong>
+          </div>
+          <dl class="items">
+            <div><dt>Produit A · 500 mg<small>1 boîte à 2 500 FCFA</small></dt><dd>2 500 FCFA</dd></div>
+            <div><dt>Produit B · 20 mg<small>2 boîtes à 1 800 FCFA</small></dt><dd>3 600 FCFA</dd></div>
+          </dl>
+          <p class="warning"><strong>Ligne 3 à confirmer</strong><br>Faites vérifier le nom par votre pharmacien.</p>
+          <p class="source">Relevé fictif · Yopougon · 22 novembre 2026</p>
+        </article>
+        <button type="button" class="action" data-panel="garde">Voir un exemple de pharmacie de garde <span aria-hidden="true">→</span></button>
+      </div>
+      <div class="panel" id="garde" hidden>
+        <p class="bubble">Voici comment une officine de garde s’affiche pour votre secteur et votre créneau.</p>
+        <article class="result">
+          <div class="amount pharmacy"><div><h3>Pharmacie de démonstration</h3><p>Yopougon · Niangon</p></div></div>
+          <dl class="items">
+            <div><dt>Période de garde</dt><dd>Dim. 19 h – lun. 8 h</dd></div>
+            <div><dt>Téléphone</dt><dd>Exemple sans numéro</dd></div>
+          </dl>
+          <p class="source">Planning fictif · Appelez l’officine pour vérifier le stock avant de partir.</p>
+        </article>
+      </div>
     </section>
-    <details>
-      <summary>Préparer une recherche de garde</summary>
-      <p class="context">Indiquez votre commune ou quartier, puis le jour et l’heure souhaités.</p>
-    </details>
   </main>
+  <script>
+    const routes = document.querySelectorAll('.routes button');
+    const panels = document.querySelectorAll('.panel');
+    for (const button of document.querySelectorAll('[data-panel]')) {
+      button.addEventListener('click', () => {
+        const target = button.dataset.panel;
+        for (const panel of panels) panel.hidden = panel.id !== target;
+        for (const route of routes) route.setAttribute('aria-pressed', String(route.dataset.panel === target));
+        if (!button.closest('.routes')) document.querySelector('.routes [aria-pressed="true"]').focus();
+      });
+    }
+  </script>
 </body>
 </html>

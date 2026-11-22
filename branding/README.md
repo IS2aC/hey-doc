@@ -1,47 +1,44 @@
 # Identité Hey-Doc
 
-**Signature** · « Votre ordonnance, votre budget. »
+Hey-Doc aide les patients et leurs proches en Côte d’Ivoire à estimer le coût de leur ordonnance et à trouver une pharmacie de garde.
 
-Hey-Doc s’adresse aux patients et à leurs proches en Côte d’Ivoire qui veulent prévoir leurs dépenses en pharmacie ou trouver une officine de garde. La marque doit inspirer confiance au moment où la personne partage une ordonnance, puis rendre lisibles le montant, sa source et les lignes à vérifier.
+**Signature proposée** · « Votre ordonnance, votre budget. »
 
-## Direction visuelle
+## Mascotte et logo
 
-Le symbole associe une feuille pliée et une bulle de conversation. Le point vert citron attire l’œil sur la lecture d’une ligne. Le logo complet porte le nom **Hey-Doc**, avec son trait d’union. Le symbole seul convient au favicon et au profil WhatsApp.
+La mascotte fournie est au centre de l’identité. Son bandana turquoise et ses contours bleu profond donnent les repères du chat et du profil WhatsApp. Elle accompagne l’accueil, la demande de photo et les réponses d’aide. Les estimations, alertes et coordonnées d’officines conservent une présentation sobre, lisible d’un coup d’œil.
 
-La piste retenue associe vert profond, crème et titres à empattements. Une piste plus institutionnelle, bleu nuit et blanc avec titres sans empattements, reste une alternative à explorer. La piste verte a été développée pour donner au chat une identité distincte tout en réservant l’ambre aux situations qui demandent une vérification. Cette direction constitue une première version à valider sur les maquettes.
+Le logo horizontal associe le SVG fourni au nom **Hey-Doc** en bleu profond. Le symbole seul convient au favicon et aux petits formats. Prévoir un espace libre autour de la mascotte et garder les proportions du SVG. L’avatar carré utilise un fond menthe et une marge prévue pour un recadrage circulaire.
 
-| Couleur | Valeur | Usage |
-|---|---|---|
-| Vert profond | `#174A3A` | Logo, action principale, récapitulatif du montant |
-| Crème | `#FBF8EF` | Fond général |
-| Blanc | `#FFFFFF` | Cartes et texte sur vert profond |
-| Encre | `#172820` | Texte principal |
-| Vert grisé | `#4F6157` | Source, date et détails secondaires |
-| Citron | `#DDF08F` | Accent ou texte sur fond vert profond |
-| Ambre pâle | `#FFF1D6` | Fond des lignes à confirmer |
-| Ambre foncé | `#684204` | Texte des lignes à confirmer |
-| Bordure | `#D8DFD7` | Séparation des cartes et des lignes |
+## Couleurs et typographie
 
-Les titres utilisent Georgia. Le chat, les champs et les détails utilisent la police système pour limiter les téléchargements sur mobile. Les montants utilisent des chiffres tabulaires, suivis de **FCFA**. L’échelle d’espacement part de 8 px. Les cartes utilisent un rayon de 16 px.
+| Usage | Valeur |
+|---|---|
+| Vert de marque et illustrations | `#00B894` |
+| Bleu profond des titres et montants | `#0F2747` |
+| Menthe des fonds et messages accueillants | `#D1FAE5` |
+| Vert foncé des boutons avec texte blanc | `#006B57` |
+| Bleu d’interaction et focus | `#2563EB` |
+| Ambre pour la vérification | `#F59E0B` et texte `#754500` sur `#FFF5DD` |
+| Rouge pour les erreurs | `#EF4444` et texte `#A51F29` sur `#FFF0F1` |
+| Fond, cartes, séparateurs et texte secondaire | `#F8FAFC`, `#FFFFFF`, `#E5E7EB`, `#475569` |
 
-## Composants et voix
+Utiliser une sans serif arrondie, avec **Nunito** comme option lorsque la police est disponible et une police système en secours. Les titres sont gras, les montants utilisent des chiffres tabulaires et affichent l’unité **FCFA**. Les cartes utilisent des angles de 20 px. Les couleurs d’état sont toujours accompagnées de texte.
 
-- **Carte ordonnance.** Montrer la présentation, le nombre de boîtes et le montant par ligne. Donner le nombre de lignes chiffrées près du total ou du sous-total et placer la source et la date juste en dessous.
-- **Ligne à confirmer.** Associer la couleur ambre à une consigne écrite. Exemple « Le nom sur la ligne 3 est difficile à lire. Faites-le confirmer par le pharmacien. »
-- **Carte pharmacie.** Mettre en évidence le nom, le secteur et la période de garde. Prévoir une action « Appeler la pharmacie » et un lien d’itinéraire si disponible.
-- **Attente et erreurs.** Utiliser des messages qui indiquent la suite. « Lecture de la photo en cours. » « La photo est floue. Reprenez-la en cadrant toute l’ordonnance. »
-- **Accueil.** « Envoyez une photo de votre ordonnance pour estimer votre budget ou cherchez une pharmacie de garde. »
-- **Prix manquant.** « Nous n’avons pas de prix comptant vérifié pour ce produit. »
-- **Planning indisponible.** « Nous n’avons pas de planning vérifié pour ce secteur et ce créneau. »
+## Voix et composants
 
-Le vouvoiement et les phrases courtes servent les deux canaux. Chaque action importante reste compréhensible par son texte et repérable au clavier. Présenter l’estimation comme une aide à la préparation du budget et signaler les références qui demandent une confirmation en pharmacie.
+| Situation | Texte ou comportement |
+|---|---|
+| Accueil du chat | « Envoyez une photo de votre ordonnance pour estimer votre budget. » |
+| Photo inexploitable | « Reprenez la photo en cadrant toute l’ordonnance, avec assez de lumière. » |
+| Estimation partielle | Afficher « Sous-total », le nombre de lignes chiffrées, puis la source et la date des prix. |
+| Ligne ambiguë | « Faites confirmer le nom ou le dosage par votre pharmacien. » |
+| Garde vérifiée | Donner le nom de l’officine, le secteur, le créneau et son téléphone. |
+| Planning absent | « Aucun planning vérifié pour ce secteur et ce créneau. » |
 
-## Actifs
+## Fichiers
 
-- [Logo principal](actifs/logo.svg) et [version monochrome](actifs/logo-monochrome.svg)
-- [Symbole et favicon SVG](actifs/symbole.svg)
-- [Avatar WhatsApp PNG](actifs/avatar-whatsapp.png)
-- [Variables CSS](theme.css)
-- [Aperçu du résultat d’ordonnance](apercu.html) à ouvrir dans un navigateur. Les données sont fictives.
-
-Prévoir un espace libre d’au moins 8 px autour du logo. Utiliser le logo complet à partir de 135 px de large et le symbole sur les emplacements carrés. Centrer le symbole dans l’avatar pour laisser de la marge au recadrage circulaire de WhatsApp.
+- [Aperçu web interactif](apercu.html), à ouvrir dans un navigateur. Les deux parcours sont illustrés avec des données fictives.
+- [Variables CSS](theme.css) et [styles de l’aperçu](apercu.css).
+- [Mascotte SVG et favicon](heydoc-mascotte.svg) et [avatar WhatsApp](actifs/avatar-whatsapp.png).
+- [Planche de couleurs fournie](heydoc-branding-color.png), [mise en scène de la marque](mascotte-heydoc-vu%20conviviale.png) et [référence de la mascotte](mascotte-heydoc-remove-bg.png). Le damier est intégré à ce dernier PNG. Le SVG sert aux intégrations transparentes.

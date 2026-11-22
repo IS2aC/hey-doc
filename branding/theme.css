@@ -1,18 +1,22 @@
 :root {
-  --color-page: #fbf8ef;
-  --color-surface: #fff;
-  --color-ink: #172820;
-  --color-muted: #4f6157;
-  --color-brand: #174a3a;
-  --color-accent: #ddf08f;
-  --color-warning-bg: #fff1d6;
-  --color-warning: #684204;
-  --color-border: #d8dfd7;
-  --font-body: system-ui, sans-serif;
-  --font-display: Georgia, serif;
-  --space-1: .5rem;
-  --space-2: 1rem;
-  --space-3: 1.5rem;
-  --space-4: 2rem;
-  --radius-card: 1rem;
+  color-scheme: light;
+  --page: #f8fafc;
+  --surface: #ffffff;
+  --ink: #0f2747;
+  --muted: #475569;
+  --brand: #00b894;
+  --action: #006b57;
+  --action-hover: #005443;
+  --mint: #d1fae5;
+  --link: #2563eb;
+  --warning: #f59e0b;
+  --warning-bg: #fff5dd;
+  --warning-ink: #754500;
+  --error: #ef4444;
+  --error-ink: #a51f29;
+  --error-bg: #fff0f1;
+  --line: #e5e7eb;
+  --font: ui-rounded, "Nunito", "Avenir Next", system-ui, sans-serif;
+  --radius: 20px;
+  --shadow: 0 18px 50px #0f274710;
 }

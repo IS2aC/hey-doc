@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Mascotte Hey-Doc">
+ <g stroke="#062847" stroke-width="13" stroke-linejoin="round" stroke-linecap="round">
+  <path d="M113 210 Q60 164 28 209 Q56 253 116 243" fill="#08bda9"/>
+  <path d="M113 237 Q53 254 37 313 Q92 335 137 274" fill="#08bda9"/>
+  <circle cx="259" cy="264" r="178" fill="#fff"/>
+  <path d="M91 237 C91 142 165 65 259 65 C353 65 425 141 427 235 Q268 165 91 264Z" fill="#08bda9"/>
+  <path d="M94 249 Q247 157 423 235" fill="none" stroke-width="15"/>
+  <path d="M109 220 Q153 175 204 156" fill="none" stroke-width="7"/>
+ </g>
+ <path d="M250 105 h26 a8 8 0 0 1 8 8 v23 h23 a8 8 0 0 1 8 8 v26 a8 8 0 0 1-8 8 h-23 v23 a8 8 0 0 1-8 8 h-26 a8 8 0 0 1-8-8 v-23 h-23 a8 8 0 0 1-8-8 v-26 a8 8 0 0 1 8-8 h23 v-23 a8 8 0 0 1 8-8Z" fill="#fff"/>
+ <ellipse cx="207" cy="290" rx="25" ry="43" fill="#062847"/><ellipse cx="310" cy="290" rx="25" ry="43" fill="#062847"/>
+ <ellipse cx="200" cy="269" rx="9" ry="15" fill="#fff"/><ellipse cx="303" cy="269" rx="9" ry="15" fill="#fff"/>
+ <ellipse cx="148" cy="337" rx="23" ry="13" fill="#ffc5cb"/><ellipse cx="369" cy="337" rx="23" ry="13" fill="#ffc5cb"/>
+ <path d="M236 337 Q258 346 281 337 Q287 373 260 387 Q233 376 236 337Z" fill="#062847"/>
+ <path d="M242 364 Q259 349 278 365 Q268 384 260 385 Q249 381 242 364Z" fill="#ff8290"/>
+ <g fill="#08bda9"><rect x="437" y="92" width="18" height="49" rx="9" transform="rotate(20 446 116)"/><rect x="461" y="145" width="18" height="49" rx="9" transform="rotate(55 470 169)"/><rect x="466" y="202" width="18" height="45" rx="9" transform="rotate(85 475 224)"/></g>
+</svg>

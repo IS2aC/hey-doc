@@ -1,0 +1,54 @@
+* { box-sizing: border-box; }
+body { margin: 0; color: var(--ink); background: var(--page); font: 1rem/1.5 var(--font); }
+h1, h2, h3, p, dl, dd { margin: 0; }
+button { font: inherit; cursor: pointer; }
+button:focus-visible { outline: 3px solid var(--link); outline-offset: 3px; }
+.top, .layout { width: min(1160px, calc(100% - 64px)); margin-inline: auto; }
+.top { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-block: 20px; border-bottom: 1px solid var(--line); }
+.top p, .chat-head p, .source { color: var(--muted); font-size: .85rem; }
+.brand { display: flex; align-items: center; gap: 8px; font-size: 1.5rem; font-weight: 850; letter-spacing: -.05em; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 48px; padding-block: 38px; }
+.intro { min-height: 620px; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; background: linear-gradient(145deg, #eefdf9, var(--mint)); border-radius: 35px; }
+.intro-copy { padding: clamp(24px, 4vw, 52px) clamp(24px, 4vw, 52px) 0; }
+h1 { font-size: clamp(2.2rem, 4.3vw, 4.1rem); font-weight: 850; line-height: 1.04; letter-spacing: -.065em; }
+h1 span { color: var(--action); }
+.intro p { max-width: 35ch; margin-top: 18px; color: var(--muted); }
+.mascot { display: grid; place-items: center; position: relative; isolation: isolate; }
+.mascot::before { content: ""; position: absolute; z-index: -1; width: 72%; aspect-ratio: 1; border: 1px solid #99dfcf; border-radius: 50%; background: #ffffff63; }
+.mascot img { width: min(100%, 385px); height: auto; display: block; }
+.chat { background: var(--surface); border: 1px solid var(--line); border-radius: 28px; box-shadow: var(--shadow); }
+.chat-head { display: flex; gap: 12px; align-items: center; padding: 18px 22px; border-bottom: 1px solid var(--line); }
+.chat-head img { background: var(--mint); border-radius: 50%; }
+.chat-head h2 { font-size: 1.1rem; line-height: 1.2; }
+.routes { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 22px 0; }
+.routes button { color: var(--ink); background: var(--page); border: 1px solid var(--line); border-radius: 999px; min-height: 44px; padding: 7px 14px; font-size: .9rem; font-weight: 700; }
+.routes button[aria-pressed="true"] { background: var(--mint); border-color: var(--action); }
+.panel { padding: 16px 22px 22px; }
+.bubble { width: fit-content; max-width: 100%; background: #ecfdf7; border-radius: 4px 16px 16px; padding: 10px 14px; margin-bottom: 14px; font-size: .95rem; }
+.result { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.amount { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 14px; padding: 16px; background: var(--ink); color: white; }
+.amount h3 { font-size: .95rem; }
+.amount p { color: var(--mint); font-size: .83rem; }
+.amount strong { font-size: 1.75rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.amount small { font-size: .72rem; }
+.items { margin-inline: 16px; }
+.items div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; padding-block: 10px; }
+.items div + div { border-top: 1px solid var(--line); }
+.items small { display: block; color: var(--muted); }
+.items dd { font-weight: 750; font-variant-numeric: tabular-nums; }
+.warning { color: var(--warning-ink); background: var(--warning-bg); border-left: 3px solid var(--warning); border-radius: 8px; margin: 4px 16px 0; padding: 8px 12px; font-size: .88rem; }
+.source { padding: 12px 16px; }
+.action { display: flex; justify-content: space-between; gap: 12px; align-items: center; text-align: left; width: 100%; min-height: 48px; margin-top: 14px; border: 0; border-radius: 12px; padding: 10px 14px; background: var(--action); color: white; font-weight: 750; }
+.action:hover { background: var(--action-hover); }
+@media (max-width: 850px) {
+  .top, .layout { width: min(630px, calc(100% - 32px)); }
+  .layout { grid-template-columns: minmax(0, 1fr); padding-block: 20px; gap: 20px; }
+  .intro { min-height: auto; }
+  .mascot img { width: min(60%, 250px); }
+  .mascot::before { width: min(55%, 230px); }
+}
+@media (max-width: 420px) {
+  .top p { text-align: right; max-width: 15ch; }
+  .chat-head, .routes, .panel { padding-inline: 14px; }
+  .routes button { padding-inline: 10px; }
+}
