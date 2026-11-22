@@ -1,0 +1,18 @@
+:root {
+  --color-page: #fbf8ef;
+  --color-surface: #fff;
+  --color-ink: #172820;
+  --color-muted: #4f6157;
+  --color-brand: #174a3a;
+  --color-accent: #ddf08f;
+  --color-warning-bg: #fff1d6;
+  --color-warning: #684204;
+  --color-border: #d8dfd7;
+  --font-body: system-ui, sans-serif;
+  --font-display: Georgia, serif;
+  --space-1: .5rem;
+  --space-2: 1rem;
+  --space-3: 1.5rem;
+  --space-4: 2rem;
+  --radius-card: 1rem;
+}

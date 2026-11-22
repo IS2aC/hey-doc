@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hey-Doc · Aperçu du résultat d’ordonnance</title>
+  <link rel="icon" href="actifs/symbole.svg">
+  <link rel="stylesheet" href="theme.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--color-page); color: var(--color-ink); font: 1rem/1.5 var(--font-body); }
+    header, main { width: min(100% - 2rem, 38rem); margin-inline: auto; }
+    header { padding-block: var(--space-3); border-bottom: 1px solid var(--color-border); }
+    img { display: block; width: 152px; height: auto; }
+    main { padding-block: var(--space-4); }
+    h1, h2 { margin: 0; font-family: var(--font-display); font-weight: 500; line-height: 1.12; }
+    h1 { font-size: clamp(2rem, 7vw, 3.25rem); }
+    h2 { font-size: 1.4rem; }
+    p { margin: 0; }
+    .context, .source { color: var(--color-muted); margin-block-start: var(--space-1); }
+    .total, .card { border-radius: var(--radius-card); margin-block-start: var(--space-2); padding: var(--space-3); }
+    .total { background: var(--color-brand); color: var(--color-surface); }
+    .total strong { display: block; color: var(--color-accent); font-size: clamp(1.9rem, 8vw, 3rem); }
+    strong { font-variant-numeric: tabular-nums; }
+    .card { background: var(--color-surface); border: 1px solid var(--color-border); }
+    dl { margin-block: var(--space-2); }
+    dl div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: var(--space-1); padding-block: var(--space-1); }
+    dl div + div { border-top: 1px solid var(--color-border); }
+    dt small { display: block; color: var(--color-muted); }
+    dd { margin: 0; }
+    .warning { padding: var(--space-2); border-radius: .5rem; background: var(--color-warning-bg); color: var(--color-warning); }
+    details { margin-block-start: var(--space-2); }
+    summary { width: fit-content; min-height: 44px; padding: .6rem 1rem; border-radius: .5rem; background: var(--color-brand); color: white; font-weight: 650; cursor: pointer; }
+    summary:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 4px; }
+  </style>
+</head>
+<body>
+  <header><img src="actifs/logo.svg" width="280" height="64" alt="Hey-Doc"></header>
+  <main>
+    <h1>Estimation de votre ordonnance</h1>
+    <p class="context">Exemple fictif · Prix comptant · Yopougon</p>
+    <section class="total" aria-labelledby="total">
+      <h2 id="total">Sous-total</h2>
+      <strong>6 100 FCFA</strong>
+      <p>2 lignes chiffrées sur 3</p>
+    </section>
+    <section class="card" aria-labelledby="lines">
+      <h2 id="lines">Produits sur l’ordonnance</h2>
+      <dl>
+        <div><dt>Produit A · 500 mg<small>1 boîte à 2 500 FCFA</small></dt><dd><strong>2 500 FCFA</strong></dd></div>
+        <div><dt>Produit B · 20 mg<small>2 boîtes à 1 800 FCFA</small></dt><dd><strong>3 600 FCFA</strong></dd></div>
+      </dl>
+      <p class="warning"><strong>Ligne 3 à confirmer.</strong> Faites vérifier le nom du produit par le pharmacien.</p>
+      <p class="source">Source de l’exemple · relevé fictif du 22 novembre 2026</p>
+    </section>
+    <details>
+      <summary>Préparer une recherche de garde</summary>
+      <p class="context">Indiquez votre commune ou quartier, puis le jour et l’heure souhaités.</p>
+    </details>
+  </main>
+</body>
+</html>
