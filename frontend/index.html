@@ -16,7 +16,7 @@
     <div class="wrap header-inner">
       <a class="wordmark" href="#haut"><img src="../branding/heydoc-mascotte.svg" width="46" height="46" alt=""><span>Hey-Doc</span></a>
       <nav aria-label="Navigation principale">
-        <a href="#fonctionnement">Comment ça marche</a>
+        <a href="#services">Services</a>
         <a href="#faq">Questions fréquentes</a>
       </nav>
       <a class="button outline" href="#demo">Voir la démo</a>
@@ -46,25 +46,44 @@
       </div>
     </section>
 
-    <section id="fonctionnement" class="feature-section" data-reveal aria-labelledby="features-title">
-      <div class="wrap features">
-        <div class="section-intro">
-          <h2 id="features-title">Préparez votre passage en pharmacie.</h2>
-          <p>Consultez une estimation après votre rendez-vous ou cherchez directement une garde pour le créneau qui vous intéresse.</p>
+    <section id="services" class="feature-section" aria-labelledby="features-title">
+      <div class="wrap">
+        <div class="services-intro" id="fonctionnement" data-reveal>
+          <h2 id="features-title">Préparez votre passage<br> en pharmacie.</h2>
+          <p>Un budget à prévoir après votre rendez-vous&nbsp;? Une officine à trouver ce soir&nbsp;?</p>
         </div>
-        <article class="feature">
-          <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 3h8l4 4v14H6zM14 3v5h4M9 12h6m-6 4h6" stroke-linejoin="round" stroke-linecap="round"/></svg></div>
-          <h3>Estimer une ordonnance</h3>
-          <p>À partir d’une photo, Hey-Doc recherche les présentations prescrites et chiffre celles dont le prix comptant est disponible. Les lignes ambiguës restent visibles pour votre pharmacien.</p>
-        </article>
-        <article class="feature">
-          <div class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M19 10c0 5-7 11-7 11s-7-6-7-11a7 7 0 1 1 14 0Z"/><circle cx="12" cy="10" r="2.3"/></svg></div>
-          <h3>Repérer une garde</h3>
-          <p>Choisissez le secteur, le jour et l’heure. Quand une garde est publiée, retrouvez le nom de l’officine, son créneau et son téléphone pour vérifier le stock.</p>
-        </article>
+        <div class="service-stack">
+          <article class="service prescription">
+            <div class="service-copy" data-reveal>
+              <h3>Votre ordonnance en FCFA.</h3>
+              <p>Envoyez une photo de l’ordonnance. Hey-Doc recherche les produits et calcule un sous-total à partir des prix comptant disponibles.</p>
+              <a class="button primary" href="#demo" data-select="ordonnance">Voir une estimation</a>
+            </div>
+            <div class="service-visual" data-reveal>
+              <div class="visual-label">Exemple fictif · Prix comptant</div>
+              <div class="receipt">
+                <div><span>Produit A · 1 boîte</span><strong>2 500 FCFA</strong></div>
+                <div><span>Produit B · 2 boîtes</span><strong>3 600 FCFA</strong></div>
+                <p class="receipt-warning">Ligne 3 à confirmer</p>
+                <div class="receipt-total"><span>Sous-total</span><strong>6 100 FCFA</strong></div>
+              </div>
+            </div>
+          </article>
+          <article class="service duty">
+            <div class="service-copy" data-reveal>
+              <h3>Une pharmacie de garde près de vous.</h3>
+              <p>Indiquez votre secteur et votre créneau. Consultez les gardes publiées, puis appelez l’officine pour vérifier le stock.</p>
+              <a class="button service-light" href="#demo" data-select="garde">Voir un exemple de garde</a>
+            </div>
+            <div class="service-visual map" data-reveal>
+              <div class="visual-label">Exemple fictif · Yopougon</div>
+              <div class="map-pin" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M19 10c0 5-7 11-7 11s-7-6-7-11a7 7 0 1 1 14 0Z"/><circle cx="12" cy="10" r="2.3"/></svg></div>
+              <div class="map-label"><strong>Officine de démonstration</strong><span>Dim. 19 h à lun. 8 h</span></div>
+            </div>
+          </article>
+        </div>
       </div>
     </section>
-
 
     <section class="story" aria-labelledby="story-title">
       <div class="wrap story-grid">
