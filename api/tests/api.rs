@@ -130,6 +130,25 @@ async fn coverage_distinguishes_absent_from_unavailable(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "hey_doc_api::MIGRATOR")]
+async fn coverage_counts_every_listing_of_the_latest_edition(pool: PgPool) {
+    let app = app(pool.clone()).await;
+    // MUGEF-CI 2026 publishes two schemes in the same edition: listed in either one is enough.
+    sqlx::raw_sql(
+        "INSERT INTO coverage_listings (id, insurer, scheme, source_id) OVERRIDING SYSTEM VALUE VALUES
+           (2, 'MUGEF-CI', 'IVSPL', 2), (3, 'MUGEF-CI', 'RCO', 2);
+         INSERT INTO coverage_entries (listing_id, presentation_id) VALUES (3, 2);
+         UPDATE sources SET published_on = '2026-12-01' WHERE id = 2;",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let (_, v) = call(&app, "GET", "/v1/presentations/2/coverage", None).await;
+    assert_eq!(v["status"], "listed");
+    let (_, v) = call(&app, "GET", "/v1/presentations/1/coverage", None).await;
+    assert_eq!(v["status"], "not_listed");
+}
+
+#[sqlx::test(migrator = "hey_doc_api::MIGRATOR")]
 async fn manual_prescription_gives_a_total(pool: PgPool) {
     let app = app(pool).await;
     let body = json!({ "sector_id": 1, "lines": [

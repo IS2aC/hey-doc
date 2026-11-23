@@ -55,7 +55,7 @@ Recherche par libellé, DCI, dosage, forme et conditionnement. Les correspondanc
 
 ### `GET /v1/presentations/{id}/coverage?scheme=cmu`
 
-`status` répond pour l’édition la plus récente du régime : `listed`, `not_listed` (la liste existe mais ne contient pas la présentation) ou `list_unavailable` (aucune liste chargée). `listings` détaille chaque édition. Sans `scheme`, toutes les listes sont consultées.
+`status` répond pour toutes les listes de l’édition la plus récente : `listed`, `not_listed` (la liste existe mais ne contient pas la présentation) ou `list_unavailable` (aucune liste chargée). `listings` détaille chaque édition. Sans `scheme`, toutes les listes sont consultées.
 
 ```json
 { "presentation_id": 3, "scheme": "cmu", "status": "listed", "listings": [

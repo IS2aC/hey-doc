@@ -194,14 +194,14 @@ pub enum CoverageStatus {
 pub struct CoverageResponse {
     presentation_id: i64,
     scheme: Option<String>,
-    /// Answer from the most recent edition; `listings` keeps older editions for context.
+    /// Answer from every listing of the most recent edition; `listings` keeps older editions for context.
     status: CoverageStatus,
     listings: Vec<Listing>,
 }
 
 /// Couverture d’une présentation.
 ///
-/// `status` répond pour l’édition la plus récente : `listed`, `not_listed` ou `list_unavailable`.
+/// `status` répond pour toutes les listes de l’édition la plus récente : `listed`, `not_listed` ou `list_unavailable`.
 #[utoipa::path(get, path = "/v1/presentations/{id}/coverage", tag = "catalogue",
     params(("id" = i64, Path, description = "Identifiant interne de la présentation"), CoverageParams),
     responses((status = 200, body = CoverageResponse), (status = 400, description = "Paramètre invalide", body = crate::ErrorBody), (status = 404, description = "Présentation introuvable", body = crate::ErrorBody)))]
@@ -231,10 +231,20 @@ pub async fn coverage(
     .bind(&scheme)
     .fetch_all(&pool)
     .await?;
-    let status = match listings.first() {
+    // One edition can hold several listings (MUGEF-CI 2026: RCO and IVSPL): answer for all of them.
+    let latest = listings.first().map(|l| l.source.published_on);
+    let status = match latest {
         None => CoverageStatus::ListUnavailable,
-        Some(l) if l.listed => CoverageStatus::Listed,
-        Some(_) => CoverageStatus::NotListed,
+        Some(edition) => {
+            let listed = listings
+                .iter()
+                .any(|l| l.source.published_on == edition && l.listed);
+            if listed {
+                CoverageStatus::Listed
+            } else {
+                CoverageStatus::NotListed
+            }
+        }
     };
     Ok(Json(CoverageResponse {
         presentation_id: id,

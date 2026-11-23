@@ -20,6 +20,10 @@ Une base créée avant l’adoption de SQLx contient déjà les tables et une ta
 - **Prix et couverture** · montants exacts en FCFA avec date, provenance et type. Le comptant, le prix publié MUGEF-CI et le tarif conventionné CMU ont des types distincts. Les listes de couverture sont identifiées par organisme, régime et source.
 - **Officines et gardes** · secteurs, coordonnées, plannings et créneaux. Les périodes incluent le début et excluent la fin. Un planning publié sans garde correspondante se distingue d’un secteur sans planning pour le créneau.
 
+- **Référentiel consolidé** (migration 002) · `establishments` regroupe toutes les structures de santé (officines, cliniques, hôpitaux, laboratoires…) avec autorisation AIRP, horaires, téléphones et signalements qualité. `establishment_sources` garde chaque enregistrement source brut et sa méthode de rapprochement. Les présentations reçoivent leur groupe thérapeutique, leur type et une note de relecture.
+
+Les tables de référence sont alimentées par le [pipeline de données](../pipeline/README.md), qui les recharge entièrement à chaque passage.
+
 Ce schéma prépare les cinq routes documentées dans le [README du projet](../README.md). Les données des PDF et les relevés en officine seront chargés lors de l’étape de collecte.
 
 ## Vérification

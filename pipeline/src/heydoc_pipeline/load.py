@@ -1,0 +1,205 @@
+"""Load the consolidated files into PostgreSQL, in one transaction.
+
+The pipeline owns every reference table: they are emptied and reloaded on each run, so a
+re-run never duplicates rows. The schema itself comes from the API migrations (SQLx).
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from collections import defaultdict
+from datetime import date, datetime, timedelta, timezone
+
+import psycopg
+from psycopg.types.json import Jsonb
+
+from .common import OUT, STAGING, read_csv
+
+DEFAULT_URL = "postgresql://hey_doc:hey_doc_local@127.0.0.1:5433/hey_doc"
+TABLES = ["pharmacy_duties", "duty_schedules", "coverage_entries", "coverage_listings", "prices",
+          "presentation_references", "presentations", "establishment_sources", "pharmacies",
+          "establishments", "sectors", "sources"]
+
+SOURCES = {
+    "airp-officines": ("AIRP", "Registre public des officines agréées", None, "https://sigir.airp.ci/api/public/officines", "registre officiel"),
+    "site-annuaire": ("pharmacies-de-garde.ci", "Annuaire des établissements de santé", None, "https://www.pharmacies-de-garde.ci/listing/", "site privé"),
+    "site-gardes": ("pharmacies-de-garde.ci", "Pharmacies de garde", None, "https://www.pharmacies-de-garde.ci/liste-des-pharmacies-de-garde-en-cote-divoire/", "site privé"),
+    "site-prix": ("pharmacies-de-garde.ci", "Prix des médicaments (reprise de la liste MUGEF-CI)", None, "https://www.pharmacies-de-garde.ci/prix-des-medicaments-en-pharmacie-en-cote-divoire/", "site privé"),
+    "site-cmu": ("pharmacies-de-garde.ci", "Médicaments pris en charge par la CMU", None, "https://www.pharmacies-de-garde.ci/liste-des-medicaments-pris-en-charge-par-la-cmu/", "site privé"),
+    "mugef-2026-09": ("MUGEF-CI", "Liste des médicaments remboursables, édition septembre 2026", date(2026, 9, 8), None, "document officiel"),
+    "mugef-2022-11": ("MUGEF-CI", "Liste des médicaments remboursables, édition novembre 2022", date(2022, 11, 10), None, "document officiel"),
+    "cmu-hta-2025": ("AIRP/CNAM/DGCMU", "Décision n° 0016 du 29/09/2025, médicaments du diabète et de l'HTA", date(2025, 9, 29), None, "document officiel (OCR)"),
+}
+COVERAGE_LISTINGS = {
+    ("mugef-2026-09", "RCO"): ("MUGEF-CI", "RCO"),
+    ("mugef-2026-09", "IVSPL"): ("MUGEF-CI", "IVSPL"),
+    ("mugef-2022-11", "CMU"): ("MUGEF-CI", "CMU"),
+    # Only two therapeutic classes: kept apart so that `scheme=cmu` does not read it as the full CMU list.
+    ("cmu-hta-2025", "CMU"): ("CNAM", "CMU (HTA et diabète)"),
+}
+
+
+def duty_slots(week_start: date) -> list[tuple[datetime, datetime]]:
+    """Published rule: 20:00-08:00 on weeknights and the whole weekend, week from Saturday to Friday.
+
+    Abidjan is UTC+0 all year. The weekend block runs from Saturday 08:00 to Monday 08:00.
+    """
+    utc = timezone.utc
+    at = lambda d, h: datetime(d.year, d.month, d.day, h, tzinfo=utc)
+    monday = week_start + timedelta(days=2)
+    slots = [(at(week_start, 8), at(monday, 8))]
+    for i in range(5):
+        night = monday + timedelta(days=i)
+        slots.append((at(night, 20), at(night + timedelta(days=1), 8)))
+    return slots
+
+
+def _num(v):
+    return None if v in (None, "") else v
+
+
+def run() -> None:
+    url = os.environ.get("DATABASE_URL", DEFAULT_URL)
+    ests = read_csv(OUT / "establishments.csv")
+    est_links = read_csv(OUT / "establishment_links.csv")
+    duties = read_csv(OUT / "duties.csv")
+    pres = read_csv(OUT / "presentations.csv")
+    refs = read_csv(OUT / "presentation_refs.csv")
+    prices = read_csv(OUT / "product_prices.csv")
+    coverage = read_csv(OUT / "product_coverage.csv")
+    raw = {
+        "airp-officines": {r["airp_id"]: r for r in read_csv(STAGING / "airp_officines.csv")},
+        "site-annuaire": {r["listing_id"]: r for r in read_csv(STAGING / "site_directory.csv")},
+        "site-gardes": {f"{r['zone']}#{r['source_row']}": r for r in read_csv(STAGING / "site_duties.csv")},
+    }
+    week_start = date.fromisoformat(duties[0]["week_start"]) if duties else None
+
+    with psycopg.connect(url) as conn, conn.cursor() as cur:
+        cur.execute(f"TRUNCATE {', '.join(TABLES)} RESTART IDENTITY CASCADE")
+
+        src = {}
+        for key, (publisher, reference, published, src_url, kind) in SOURCES.items():
+            if key == "site-gardes" and week_start:
+                reference = f"{reference}, semaine du {week_start.isoformat()}"
+            cur.execute("INSERT INTO sources (publisher, reference, published_on, url, kind) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                        (publisher, reference, published, src_url, kind))
+            src[key] = cur.fetchone()[0]
+
+        est_id = {}
+        for e in ests:
+            cur.execute(
+                """INSERT INTO establishments (ref, kind, name, address, city, commune, latitude, longitude, phones,
+                       opening_hours, airp_authorization, license_status, license_valid_until, pharmacist, categories,
+                       description, quality_flags)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                (e["est_id"], e["kind"], e["name"], _num(e["address"]), _num(e["city"]), _num(e["commune"]),
+                 _num(e["lat"]), _num(e["lng"]), e["phones"].split(), Jsonb(json.loads(e["opening_hours"])) if e["opening_hours"] else None,
+                 _num(e["airp_authorization"]), _num(e["license_status"]), _num(e["license_valid_until"]),
+                 _num(e["pharmacist"]), _num(e["categories"]), _num(e["description"]),
+                 [f for f in e["flags"].split(" ; ") if f]))
+            est_id[e["est_id"]] = cur.fetchone()[0]
+
+        for l in est_links:
+            data = raw.get(l["source"], {}).get(l["source_record"], {})
+            cur.execute(
+                """INSERT INTO establishment_sources (establishment_id, source_id, record_key, match_method, match_score, distance_m, data)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                (est_id[l["est_id"]], src[l["source"]], l["source_record"], l["match_method"], _num(l["match_score"]),
+                 _num(l["distance_m"]), Jsonb({k: v for k, v in data.items() if v not in (None, "")})))
+
+        # Operational pharmacies (used by the API) are grouped by sector: commune in Abidjan, town elsewhere.
+        sector_id: dict[tuple[str, str], int] = {}
+
+        def sector(city: str | None, commune: str | None) -> int:
+            city = city or "Ville non précisée"
+            district = commune or (f"{city} (commune non précisée)" if city == "Abidjan" else city)
+            if (city, district) not in sector_id:
+                cur.execute("INSERT INTO sectors (city, district) VALUES (%s, %s) RETURNING id", (city, district))
+                sector_id[(city, district)] = cur.fetchone()[0]
+            return sector_id[(city, district)]
+
+        pharmacy: dict[str, tuple[int, int]] = {}
+        for e in ests:
+            if e["kind"] != "pharmacie":
+                continue
+            sid = sector(e["city"], e["commune"])
+            cur.execute(
+                """INSERT INTO pharmacies (sector_id, name, phone, address, latitude, longitude, establishment_id)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                (sid, e["name"], (e["phones"].split() or [None])[0], _num(e["address"]), _num(e["lat"]), _num(e["lng"]),
+                 est_id[e["est_id"]]))
+            pharmacy[e["est_id"]] = (cur.fetchone()[0], sid)
+
+        if duties and week_start:
+            # Every sector of a town covered by the published list gets a schedule, so that a sector
+            # with no pharmacy on duty reads as "none in schedule" rather than "no schedule".
+            period = duty_slots(week_start)
+            sched_range = (period[0][0], period[-1][1])
+            covered_cities = {d["city"] for d in duties}
+            schedule: dict[int, int] = {}
+            for (city, _), sid in sector_id.items():
+                if city in covered_cities:
+                    cur.execute("INSERT INTO duty_schedules (sector_id, source_id, period) VALUES (%s, %s, tstzrange(%s, %s)) RETURNING id",
+                                (sid, src["site-gardes"], *sched_range))
+                    schedule[sid] = cur.fetchone()[0]
+            n_slots = 0
+            for d in duties:
+                ph = pharmacy.get(d["est_id"])
+                if ph is None or ph[1] not in schedule:
+                    continue
+                for start, end in period:
+                    cur.execute(
+                        """INSERT INTO pharmacy_duties (schedule_id, sector_id, schedule_period, pharmacy_id, period)
+                           VALUES (%s, %s, tstzrange(%s, %s), %s, tstzrange(%s, %s)) ON CONFLICT DO NOTHING""",
+                        (schedule[ph[1]], ph[1], *sched_range, ph[0], start, end))
+                    n_slots += cur.rowcount
+
+        pres_id = {}
+        for p in pres:
+            cur.execute(
+                """INSERT INTO presentations (ref, label, ingredient, strength, dosage_form, pack, therapeutic_group, product_type, review_note)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                (p["pres_id"], p["label"], _num(p["ingredient"]), _num(p["strength"]), _num(p["dosage_form"]), _num(p["pack"]),
+                 _num(p["therapeutic_group"]), _num(p["product_type"]), _num(p["review"])))
+            pres_id[p["pres_id"]] = cur.fetchone()[0]
+        for r in refs:
+            cur.execute(
+                """INSERT INTO presentation_references (presentation_id, source_id, source_code, source_row, original_label, page, match_method, match_score)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
+                (pres_id[r["pres_id"]], src[r["source"]], _num(r["source_code"]), r["source_record"], r["original_label"] or "?",
+                 _num(r["page"]), r["match_method"], _num(r["match_score"])))
+        skipped = defaultdict(int)
+        for p in prices:
+            if not p["amount_fcfa"] or not p["observed_on"]:
+                skipped["prix sans montant ou date"] += 1
+                continue
+            cur.execute(
+                """INSERT INTO prices (presentation_id, source_id, kind, amount_fcfa, observed_on, review_note)
+                   VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
+                (pres_id[p["pres_id"]], src[p["source"]], p["kind"], p["amount_fcfa"], p["observed_on"], _num(p["review"])))
+            if cur.rowcount == 0:
+                skipped["prix en double pour la même présentation et la même source"] += 1
+        listing = {}
+        for (source, scheme), (insurer, label) in COVERAGE_LISTINGS.items():
+            cur.execute("INSERT INTO coverage_listings (insurer, scheme, source_id) VALUES (%s,%s,%s) RETURNING id",
+                        (insurer, label, src[source]))
+            listing[(source, scheme)] = cur.fetchone()[0]
+        for c in coverage:
+            lid = listing.get((c["source"], c["scheme"]))
+            if lid is None:
+                skipped[f"régime inconnu {c['source']}/{c['scheme']}"] += 1
+                continue
+            cur.execute("INSERT INTO coverage_entries (listing_id, presentation_id, category) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
+                        (lid, pres_id[c["pres_id"]], _num(c["category"])))
+
+        conn.commit()
+        cur.execute("""SELECT (SELECT count(*) FROM establishments), (SELECT count(*) FROM pharmacies),
+                              (SELECT count(*) FROM sectors), (SELECT count(*) FROM pharmacy_duties),
+                              (SELECT count(*) FROM presentations), (SELECT count(*) FROM prices),
+                              (SELECT count(*) FROM coverage_entries), (SELECT count(*) FROM establishment_sources)""")
+        e, ph, sec, du, pr, px, cov, links = cur.fetchone()
+        print(f"chargé : {e} établissements dont {ph} pharmacies, {sec} secteurs, {du} créneaux de garde, "
+              f"{pr} présentations, {px} prix, {cov} couvertures, {links} enregistrements sources")
+        for k, v in skipped.items():
+            print(f"  ignoré : {v} {k}")
