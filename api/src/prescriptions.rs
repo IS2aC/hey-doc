@@ -10,8 +10,11 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use utoipa::ToSchema;
 
+use uuid::Uuid;
+
 use crate::{
     ApiError, AppState,
+    archive::{ClassifiedLine, Entry, LineKind},
     catalog::Presentation,
     reducto::{Image, ReadError, TextBlock},
 };
@@ -82,6 +85,11 @@ pub struct ReadResponse {
     /// Lignes écartées : en-tête, médecin, patient, dates, signatures.
     ignored_lines: usize,
     reader: Option<ReaderInfo>,
+    /// Identifiant d’archive, quand la personne a accepté de verser son ordonnance au corpus.
+    /// L’archivage se fait après la réponse ; seules les lignes de médicament et de posologie
+    /// restent lisibles dans l’image archivée.
+    #[schema(value_type = Option<String>, format = Uuid)]
+    archive_id: Option<Uuid>,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -98,6 +106,11 @@ pub struct ImageUpload {
     /// Photo JPEG, PNG ou HEIC de l’ordonnance, 10 Mo au plus.
     #[schema(value_type = String, format = Binary)]
     image: Vec<u8>,
+    /// `true` si la personne accepte de verser son ordonnance masquée au corpus d’annotation.
+    /// Absent ou `false` par défaut : rien n’est conservé.
+    consent: Option<bool>,
+    /// `web` (par défaut), `whatsapp` ou `api`.
+    channel: Option<String>,
 }
 
 /// Lire une ordonnance photographiée.
@@ -118,7 +131,10 @@ pub async fn read(State(state): State<AppState>, multipart: Multipart) -> Result
             "La lecture de photo n’est pas configurée. Utilisez la saisie texte.".into(),
         ));
     };
-    let image = image_from(multipart).await?;
+    let Upload { image, consent, channel } = upload_from(multipart).await?;
+    // HEIC cannot be decoded here to be masked: it is never archived.
+    let archive = state.archive.clone().filter(|_| consent && image.extension != "heic");
+    let photo = archive.as_ref().map(|_| image.bytes.clone());
     let transcript = reader.read(image).await.map_err(|e| match e {
         ReadError::Rejected(_) => ApiError::BadRequest(
             "image_rejected",
@@ -129,7 +145,7 @@ pub async fn read(State(state): State<AppState>, multipart: Multipart) -> Result
             ApiError::Upstream("reader_failed", "La lecture de photo est momentanément indisponible.".into())
         }
     })?;
-    let info = ReaderInfo { provider: transcript.provider, model: transcript.model, pages: transcript.pages };
+    let info = ReaderInfo { provider: transcript.provider, model: transcript.model.clone(), pages: transcript.pages };
     let letters: usize = transcript.blocks.iter().map(|b| b.content.chars().filter(|c| c.is_alphabetic()).count()).sum();
     if letters < 15 {
         return Ok(Json(ReadResponse {
@@ -138,11 +154,29 @@ pub async fn read(State(state): State<AppState>, multipart: Multipart) -> Result
             lines: vec![],
             ignored_lines: 0,
             reader: Some(info),
+            archive_id: None,
         }));
     }
     let raw = lines_from_blocks(&transcript.blocks);
-    let mut response = match_lines(&state.pool, raw).await?;
+    let (mut response, lines) = match_lines(&state.pool, raw).await?;
     response.reader = Some(info);
+    if let (Some(archive), Some(photo)) = (archive, photo) {
+        let id = Uuid::new_v4();
+        response.archive_id = Some(id);
+        let entry = Entry {
+            id,
+            channel,
+            photo,
+            transcript,
+            lines,
+            result: serde_json::to_value(&response.lines).unwrap_or_default(),
+        };
+        tokio::spawn(async move {
+            if let Err(e) = archive.save(entry).await {
+                tracing::error!(%id, error = %e, "archivage de l’ordonnance impossible");
+            }
+        });
+    }
     Ok(Json(response))
 }
 
@@ -162,24 +196,45 @@ pub async fn match_text(
             format!("text doit contenir de 1 à {MAX_TEXT_CHARS} caractères"),
         ));
     }
-    let raw = body.text.lines().map(|l| RawLine { text: clean_line(l), low_confidence: false }).collect();
-    Ok(Json(match_lines(&pool, raw).await?))
+    let raw = body.text.lines().map(|l| RawLine { text: clean_line(l), low_confidence: false, block: None }).collect();
+    Ok(Json(match_lines(&pool, raw).await?.0))
 }
 
-async fn image_from(mut multipart: Multipart) -> Result<Image, ApiError> {
+struct Upload {
+    image: Image,
+    consent: bool,
+    channel: String,
+}
+
+async fn upload_from(mut multipart: Multipart) -> Result<Upload, ApiError> {
     let invalid = |msg: &str| ApiError::BadRequest("invalid_image", msg.into());
+    let (mut image, mut consent, mut channel) = (None, false, "web".to_owned());
     while let Some(field) = multipart.next_field().await.map_err(|_| invalid("Formulaire multipart invalide ou image de plus de 10 Mo"))? {
-        if field.name() != Some("image") {
-            continue;
+        match field.name() {
+            Some("image") => {
+                let bytes = field.bytes().await.map_err(|_| invalid("Image illisible ou de plus de 10 Mo"))?;
+                if bytes.len() > MAX_IMAGE_BYTES {
+                    return Err(invalid("L’image dépasse 10 Mo"));
+                }
+                let extension = image_kind(&bytes).ok_or_else(|| invalid("Formats acceptés : JPEG, PNG, HEIC"))?;
+                image = Some(Image { bytes: bytes.to_vec(), extension });
+            }
+            Some("consent") => {
+                let v = field.text().await.unwrap_or_default();
+                consent = matches!(v.trim().to_lowercase().as_str(), "true" | "1" | "oui" | "yes");
+            }
+            Some("channel") => {
+                let v = field.text().await.unwrap_or_default().trim().to_lowercase();
+                if !matches!(v.as_str(), "web" | "whatsapp" | "api") {
+                    return Err(ApiError::BadRequest("invalid_channel", "channel vaut web, whatsapp ou api".into()));
+                }
+                channel = v;
+            }
+            _ => {}
         }
-        let bytes = field.bytes().await.map_err(|_| invalid("Image illisible ou de plus de 10 Mo"))?;
-        if bytes.len() > MAX_IMAGE_BYTES {
-            return Err(invalid("L’image dépasse 10 Mo"));
-        }
-        let extension = image_kind(&bytes).ok_or_else(|| invalid("Formats acceptés : JPEG, PNG, HEIC"))?;
-        return Ok(Image { bytes: bytes.to_vec(), extension });
     }
-    Err(invalid("Champ « image » manquant"))
+    let image = image.ok_or_else(|| invalid("Champ « image » manquant"))?;
+    Ok(Upload { image, consent, channel })
 }
 
 /// Detects the format from the file's first bytes, not from its name or declared type.
@@ -200,18 +255,20 @@ pub fn image_kind(b: &[u8]) -> Option<&'static str> {
 pub struct RawLine {
     pub text: String,
     pub low_confidence: bool,
+    /// Index of the reader block the line comes from.
+    pub block: Option<usize>,
 }
 
 const SKIPPED_BLOCKS: [&str; 4] = ["Header", "Footer", "Figure", "Comment"];
 
 pub fn lines_from_blocks(blocks: &[TextBlock]) -> Vec<RawLine> {
     let mut out = vec![];
-    for b in blocks.iter().filter(|b| !SKIPPED_BLOCKS.contains(&b.kind.as_str())) {
+    for (i, b) in blocks.iter().enumerate().filter(|(_, b)| !SKIPPED_BLOCKS.contains(&b.kind.as_str())) {
         let low = b.low_confidence || b.confidence.is_some_and(|c| c < 0.6);
         for line in strip_markup(&b.content).lines() {
             let text = clean_line(line);
             if !text.is_empty() {
-                out.push(RawLine { text, low_confidence: low });
+                out.push(RawLine { text, low_confidence: low, block: Some(i) });
             }
         }
     }
@@ -534,6 +591,9 @@ struct Draft {
     quantity: Option<i32>,
     units: Option<i32>,
     low_confidence: bool,
+    /// Indexes of the raw lines that make the product, then of its instruction lines.
+    product_lines: Vec<usize>,
+    posology_lines: Vec<usize>,
 }
 
 /// "(Co-Amoxiclav) 500/125 mg" or "500 mg/tab" right after a product without strength and
@@ -543,10 +603,13 @@ fn continues(prev: &Draft, folded: &str) -> bool {
     prev.instructions.is_empty() && strengths(&prev.query, true).is_empty() && (folded.starts_with('(') || bare_strength)
 }
 
-async fn match_lines(pool: &PgPool, raw: Vec<RawLine>) -> Result<ReadResponse, ApiError> {
+/// Also says what each raw line turned out to be, for the archive's masking.
+async fn match_lines(pool: &PgPool, raw: Vec<RawLine>) -> Result<(ReadResponse, Vec<ClassifiedLine>), ApiError> {
+    let mut classified: Vec<ClassifiedLine> =
+        raw.iter().map(|r| ClassifiedLine { text: r.text.clone(), kind: LineKind::Other, block: r.block }).collect();
     let mut drafts: Vec<Draft> = vec![];
     let mut ignored = 0;
-    for raw in raw {
+    for (index, raw) in raw.into_iter().enumerate() {
         let folded = fold(&raw.text);
         if is_header(&folded) {
             ignored += 1;
@@ -554,7 +617,10 @@ async fn match_lines(pool: &PgPool, raw: Vec<RawLine>) -> Result<ReadResponse, A
         }
         if starts_like_posology(&folded) {
             match drafts.last_mut() {
-                Some(prev) => prev.instructions.push(raw.text),
+                Some(prev) => {
+                    prev.instructions.push(raw.text);
+                    prev.posology_lines.push(index);
+                }
                 None => ignored += 1,
             }
             continue;
@@ -573,13 +639,24 @@ async fn match_lines(pool: &PgPool, raw: Vec<RawLine>) -> Result<ReadResponse, A
             prev.quantity = prev.quantity.or(quantity);
             prev.units = prev.units.or(units);
             prev.low_confidence |= raw.low_confidence;
+            prev.product_lines.push(index);
             continue;
         }
         if drafts.len() >= MAX_LINES {
             ignored += 1;
             continue;
         }
-        drafts.push(Draft { text, query, names: name.into_iter().collect(), instructions, quantity, units, low_confidence: raw.low_confidence });
+        drafts.push(Draft {
+            text,
+            query,
+            names: name.into_iter().collect(),
+            instructions,
+            quantity,
+            units,
+            low_confidence: raw.low_confidence,
+            product_lines: vec![index],
+            posology_lines: vec![],
+        });
     }
 
     let mut lines = vec![];
@@ -592,6 +669,8 @@ async fn match_lines(pool: &PgPool, raw: Vec<RawLine>) -> Result<ReadResponse, A
             ignored += 1;
             continue;
         }
+        d.product_lines.iter().for_each(|&i| classified[i].kind = LineKind::Product);
+        d.posology_lines.iter().for_each(|&i| classified[i].kind = LineKind::Posology);
         lines.push(PrescriptionLine {
             text: d.text,
             instructions: d.instructions,
@@ -602,7 +681,8 @@ async fn match_lines(pool: &PgPool, raw: Vec<RawLine>) -> Result<ReadResponse, A
             candidates: if status == LineStatus::NoMatch { vec![] } else { candidates },
         });
     }
-    Ok(ReadResponse { status: ReadStatus::Read, message: None, lines, ignored_lines: ignored, reader: None })
+    let response = ReadResponse { status: ReadStatus::Read, message: None, lines, ignored_lines: ignored, reader: None, archive_id: None };
+    Ok((response, classified))
 }
 
 /// `fold` maps one char to one char, so char positions line up between the two strings.

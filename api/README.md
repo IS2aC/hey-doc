@@ -14,6 +14,15 @@ Au démarrage, le service applique les migrations de `../database/migrations`. I
 
 La lecture de photo d’ordonnance passe par Reducto. Elle s’active avec `REDUCTO_API_KEY` (clé créée sur [studio.reducto.ai](https://studio.reducto.ai)). `REDUCTO_MODEL` vaut `r-1` par défaut et `REDUCTO_BASE_URL` `https://platform.reducto.ai`. Sans clé, `POST /v1/prescriptions/read` répond 503 et la saisie texte reste disponible. Ne versionnez pas la clé : passez-la par l’environnement ou un fichier `.env` ignoré par git.
 
+L’archivage des ordonnances, avec accord, utilise un stockage compatible S3. En local :
+
+```sh
+docker compose up -d --wait minio
+S3_ENDPOINT=http://127.0.0.1:9000 S3_ACCESS_KEY=hey_doc S3_SECRET_KEY=hey_doc_local_minio cargo run
+```
+
+`S3_BUCKET` vaut `prescriptions` par défaut, `S3_REGION` `us-east-1` et `HEYDOC_ARCHIVE_DAYS` 365 jours. Sans `S3_ENDPOINT`, rien n’est archivé, même avec accord. La console MinIO est sur http://127.0.0.1:9001. MinIO ne publie plus d’image officielle : `compose.yaml` utilise la dernière image communautaire archivée, figée et sans mises à jour de sécurité, à réserver au développement. N’importe quel stockage compatible S3 la remplace sans changer le code.
+
 La documentation interactive (Swagger UI) est servie sur [`/docs`](http://127.0.0.1:8080/docs) : on peut y essayer chaque route. La spécification OpenAPI est sur `/docs/openapi.json`. Elle est générée depuis le code avec `utoipa`.
 
 ## Tester
@@ -22,7 +31,11 @@ La documentation interactive (Swagger UI) est servie sur [`/docs`](http://127.0.
 DATABASE_URL=postgresql://hey_doc:hey_doc_local@127.0.0.1:5433/hey_doc cargo test
 ```
 
-Chaque test crée sa propre base temporaire, applique les migrations et charge des données fictives. La base `hey_doc` n’est pas modifiée.
+Chaque test crée sa propre base temporaire, applique les migrations et charge des données fictives. La base `hey_doc` n’est pas modifiée. Les tests d’archivage utilisent un stockage en mémoire. Un test supplémentaire écrit dans un vrai MinIO :
+
+```sh
+S3_ENDPOINT=http://127.0.0.1:9000 S3_ACCESS_KEY=hey_doc S3_SECRET_KEY=hey_doc_local_minio cargo test -- --ignored
+```
 
 ## Conventions
 
@@ -110,7 +123,7 @@ Recherche par libellé, DCI, dosage, forme et conditionnement. Les correspondanc
 
 ### `POST /v1/prescriptions/read`
 
-Formulaire `multipart/form-data` avec un champ `image` : JPEG, PNG ou HEIC de 10 Mo au plus, format reconnu par le contenu du fichier. Le service envoie la photo à Reducto (`/upload`, puis `/parse` avec le modèle r-1), puis supprime le fichier et le résultat chez Reducto. Les erreurs temporaires (408, 409, 429, 5xx, délai dépassé) sont retentées deux fois. Hey-Doc ne conserve pas la photo, et les journaux ne contiennent pas le texte de l’ordonnance.
+Formulaire `multipart/form-data` avec un champ `image` : JPEG, PNG ou HEIC de 10 Mo au plus, format reconnu par le contenu du fichier. Deux champs facultatifs : `consent` (`true` si la personne accepte de verser son ordonnance masquée au corpus d’annotation, `false` par défaut) et `channel` (`web` par défaut, `whatsapp` ou `api`). Le service envoie la photo à Reducto (`/upload`, puis `/parse` avec le modèle r-1), puis supprime le fichier et le résultat chez Reducto. Les erreurs temporaires (408, 409, 429, 5xx, délai dépassé) sont retentées deux fois. Hey-Doc ne conserve pas la photo, et les journaux ne contiennent pas le texte de l’ordonnance.
 
 ```sh
 curl -F image=@ordonnance.jpg http://127.0.0.1:8080/v1/prescriptions/read
@@ -134,7 +147,23 @@ Les blocs transcrits deviennent des lignes. Les en-têtes et pieds de page, le m
 - `ambiguous` : plusieurs présentations proches, par exemple deux marques ou deux formes au même dosage, et la personne choisit ;
 - `no_match` : rien de suffisamment proche dans le catalogue.
 
+`archive_id` n’est rempli que si la personne a donné son accord et que l’archive est configurée. Voir « Archive d’annotation » plus bas.
+
 `candidates` liste au plus 5 présentations. Le score combine la proximité du texte avec le libellé complet et avec le nom écrit, puis tient compte des dosages convertis en milligrammes (`1g` = `1000 mg`, `500/125 mg` = deux dosages) et de la forme écrite (`cp`, `tab`, `gélule`, `sirop`…). `low_confidence` signale une lecture incertaine selon Reducto. La ligne choisie et sa quantité se passent ensuite à `POST /v1/estimates`.
+
+### Archive d’annotation
+
+Le but est de constituer un corpus annoté pour entraîner plus tard un modèle local de lecture manuscrite. Rien n’est archivé sans `consent=true`, ni pour une photo HEIC.
+
+Après la réponse, en arrière-plan :
+
+1. Reducto a renvoyé la position de chaque ligne écrite (`return_ocr_data`). Chaque ligne est classée *médicament*, *posologie* ou *autre* : en-tête, patient, médecin, date, tampon, signature, ou tout ce qui n’est pas reconnu.
+2. L’image archivée part d’un fond noir. Seules les lignes *médicament* et *posologie* y sont recopiées depuis la photo, après application de l’orientation EXIF. Un nom ou une signature que le lecteur n’a pas su lire reste donc masqué. Le réencodage en JPEG supprime toutes les métadonnées, dont la position GPS.
+3. L’annotation (`heydoc.prescription-annotation/1`) donne la position de toutes les lignes, avec leur texte seulement pour les lignes conservées. Elle contient aussi les lignes rapprochées du catalogue et le statut de relecture `to_review`.
+4. MinIO reçoit `reads/AAAA/MM/<id>/image.jpg` et `annotation.json`. La table `prescription_reads` les indexe : canal, modèle, nombre de zones conservées et masquées, texte conservé pour la recherche, statut de relecture.
+5. La photo d’origine et la réponse brute de Reducto ne sont jamais écrites sur disque.
+
+Une purge supprime les objets puis les lignes à expiration, au démarrage puis toutes les 6 heures. Sans OCR par ligne, un bloc reste visible seulement si toutes ses lignes sont conservées. Les annotations sont des pré-annotations : elles doivent être relues avant tout entraînement.
 
 ### `POST /v1/prescriptions/match`
 

@@ -6,17 +6,26 @@ edition = "2024"
 [dependencies]
 axum = { version = "0.8.9", features = ["multipart"] }
 chrono = { version = "0.4.45", features = ["serde"] }
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
+object_store = { version = "0.14.2", features = ["aws"] }
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "multipart", "rustls", "http2"] }
 rust_decimal = { version = "1.43.0", features = ["serde-with-str"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
-sqlx = { version = "0.9.1", features = ["runtime-tokio", "postgres", "macros", "migrate", "chrono", "rust_decimal"] }
+sha2 = "0.11.1"
+sqlx = { version = "0.9.1", features = ["runtime-tokio", "postgres", "macros", "migrate", "chrono", "rust_decimal", "uuid"] }
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "signal"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
-utoipa = { version = "6.0.0", features = ["chrono"] }
+utoipa = { version = "6.0.0", features = ["chrono", "uuid"] }
 utoipa-swagger-ui = { version = "10.0.2", features = ["axum", "vendored"] }
+uuid = { version = "1.29.3", features = ["v4", "serde"] }
 
 [dev-dependencies]
+chrono = "0.4.45"
+futures = "0.3.34"
 http-body-util = "0.1.5"
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
+object_store = "0.14.2"
 tower = { version = "0.5.3", features = ["util"] }
+uuid = "1.29.3"

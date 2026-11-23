@@ -1,3 +1,4 @@
+pub mod archive;
 mod catalog;
 mod duty;
 mod estimates;
@@ -49,6 +50,8 @@ pub struct AppState {
     pub pool: PgPool,
     /// `None` when no reader is configured: photo reading then answers 503.
     pub reader: Option<Arc<dyn reducto::PrescriptionReader>>,
+    /// `None` when object storage is not configured: consent is then ignored, nothing is kept.
+    pub archive: Option<Arc<archive::Archive>>,
 }
 
 impl FromRef<AppState> for PgPool {
@@ -58,10 +61,14 @@ impl FromRef<AppState> for PgPool {
 }
 
 pub fn router(pool: PgPool) -> Router {
-    router_with_reader(pool, None)
+    router_with(AppState { pool, reader: None, archive: None })
 }
 
 pub fn router_with_reader(pool: PgPool, reader: Option<Arc<dyn reducto::PrescriptionReader>>) -> Router {
+    router_with(AppState { pool, reader, archive: None })
+}
+
+pub fn router_with(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/v1/products/search", get(catalog::search))
@@ -75,7 +82,7 @@ pub fn router_with_reader(pool: PgPool, reader: Option<Arc<dyn reducto::Prescrip
             post(prescriptions::read).layer(DefaultBodyLimit::max(prescriptions::MAX_IMAGE_BYTES + 64 * 1024)),
         )
         .route("/v1/prescriptions/match", post(prescriptions::match_text))
-        .with_state(AppState { pool, reader })
+        .with_state(state)
         .merge(SwaggerUi::new("/docs").url("/docs/openapi.json", ApiDoc::openapi()))
 }
 

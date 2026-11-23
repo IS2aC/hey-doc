@@ -26,7 +26,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if reader.is_none() {
         tracing::warn!("REDUCTO_API_KEY absent : la lecture de photo répondra 503, la saisie texte reste disponible");
     }
-    axum::serve(listener, hey_doc_api::router_with_reader(pool, reader))
+    let archive = match hey_doc_api::archive::Archive::from_env(pool.clone()) {
+        Some(Ok(a)) => {
+            let a = std::sync::Arc::new(a);
+            a.clone().spawn_purge();
+            Some(a)
+        }
+        Some(Err(e)) => return Err(format!("stockage objet mal configuré : {e}").into()),
+        None => {
+            tracing::warn!("S3_ENDPOINT absent : aucune ordonnance ne sera archivée, même avec accord");
+            None
+        }
+    };
+    let state = hey_doc_api::AppState { pool, reader, archive };
+    axum::serve(listener, hey_doc_api::router_with(state))
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })

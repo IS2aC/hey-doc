@@ -21,6 +21,7 @@ Une base créée avant l’adoption de SQLx contient déjà les tables et une ta
 - **Officines et gardes** · secteurs, coordonnées, plannings et créneaux. Les périodes incluent le début et excluent la fin. Un planning publié sans garde correspondante se distingue d’un secteur sans planning pour le créneau.
 
 - **Référentiel consolidé** (migration 002) · `establishments` regroupe toutes les structures de santé (officines, cliniques, hôpitaux, laboratoires…) avec autorisation AIRP, horaires, téléphones et signalements qualité. `establishment_sources` garde chaque enregistrement source brut et sa méthode de rapprochement. Les présentations reçoivent leur groupe thérapeutique, leur type et une note de relecture.
+- **Ordonnances archivées** (migration 003) · `prescription_reads` indexe les ordonnances versées au corpus avec l’accord de la personne : clés de l’image masquée et de l’annotation dans le stockage objet, canal, modèle de lecture, statut de relecture, date d’expiration et texte conservé (médicaments et posologies) pour la recherche plein texte et par trigrammes. Les noms du patient et du médecin ne sont jamais stockés.
 
 Les tables de référence sont alimentées par le [pipeline de données](../pipeline/README.md), qui les recharge entièrement à chaque passage.
 

@@ -17,5 +17,28 @@ services:
       timeout: 3s
       retries: 15
 
+  # Object storage for consented, masked prescriptions (S3 API on 9000, console on 9001).
+  # MinIO no longer publishes official images: this is the last archived community build,
+  # frozen and without security updates. Fine for local development only. The API speaks
+  # plain S3, so any S3-compatible store can replace it.
+  minio:
+    image: bitnamilegacy/minio:latest
+    environment:
+      MINIO_ROOT_USER: ${HEYDOC_S3_ACCESS_KEY:-hey_doc}
+      MINIO_ROOT_PASSWORD: ${HEYDOC_S3_SECRET_KEY:-hey_doc_local_minio}
+      # Created private at start-up.
+      MINIO_DEFAULT_BUCKETS: prescriptions
+    ports:
+      - "127.0.0.1:${HEYDOC_S3_PORT:-9000}:9000"
+      - "127.0.0.1:${HEYDOC_S3_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/bitnami/minio/data
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
 volumes:
   postgres_data:
+  minio_data:

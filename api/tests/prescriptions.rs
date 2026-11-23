@@ -14,7 +14,13 @@ use serde_json::{Value, json};
 use sqlx::PgPool;
 use tower::ServiceExt;
 
-use hey_doc_api::reducto::{BoxFuture, Image, PrescriptionReader, ReadError, Reducto, TextBlock, Transcript};
+use futures::StreamExt;
+use hey_doc_api::{
+    AppState,
+    archive::Archive,
+    reducto::{BBox, BoxFuture, Image, OcrLine, PrescriptionReader, ReadError, Reducto, TextBlock, Transcript},
+};
+use object_store::{ObjectStore, ObjectStoreExt, memory::InMemory, path::Path};
 
 const FIXTURE: &str = r#"
 INSERT INTO presentations (id, label, ingredient, strength, dosage_form, pack) OVERRIDING SYSTEM VALUE VALUES
@@ -42,7 +48,15 @@ fn text_request(text: &str) -> Request<Body> {
 }
 
 fn photo_request(bytes: &[u8]) -> Request<Body> {
-    let mut body = b"--XBOUNDARY\r\nContent-Disposition: form-data; name=\"image\"; filename=\"o.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n".to_vec();
+    photo_request_with(bytes, &[])
+}
+
+fn photo_request_with(bytes: &[u8], fields: &[(&str, &str)]) -> Request<Body> {
+    let mut body = vec![];
+    for (name, value) in fields {
+        body.extend_from_slice(format!("--XBOUNDARY\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n").as_bytes());
+    }
+    body.extend_from_slice(b"--XBOUNDARY\r\nContent-Disposition: form-data; name=\"image\"; filename=\"o.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n");
     body.extend_from_slice(bytes);
     body.extend_from_slice(b"\r\n--XBOUNDARY--\r\n");
     Request::post("/v1/prescriptions/read")
@@ -51,7 +65,12 @@ fn photo_request(bytes: &[u8]) -> Request<Body> {
         .unwrap()
 }
 
-struct FakeReader(Vec<(&'static str, &'static str)>);
+/// Blocks (type, content), then OCR lines (text, top of the line as a fraction of the page).
+struct FakeReader(Vec<(&'static str, &'static str)>, Vec<(&'static str, f64)>);
+
+fn line_box(top: f64) -> BBox {
+    BBox { left: 0.05, top, width: 0.9, height: 0.08 }
+}
 
 impl PrescriptionReader for FakeReader {
     fn read(&self, _image: Image) -> BoxFuture<'_, Result<Transcript, ReadError>> {
@@ -61,11 +80,17 @@ impl PrescriptionReader for FakeReader {
             .map(|(kind, content)| TextBlock {
                 kind: (*kind).into(),
                 content: (*content).into(),
+                bbox: None,
                 confidence: Some(0.9),
                 low_confidence: false,
             })
             .collect();
-        Box::pin(async move { Ok(Transcript { blocks, pages: 1, provider: "fake", model: "test".into() }) })
+        let ocr_lines = self
+            .1
+            .iter()
+            .map(|(text, top)| OcrLine { text: (*text).into(), bbox: line_box(*top), confidence: Some(0.9) })
+            .collect();
+        Box::pin(async move { Ok(Transcript { blocks, ocr_lines, pages: 1, provider: "fake", model: "test".into() }) })
     }
 }
 
@@ -119,7 +144,7 @@ async fn photo_reading_without_a_key_is_unavailable(pool: PgPool) {
 
 #[sqlx::test(migrator = "hey_doc_api::MIGRATOR")]
 async fn photo_must_be_an_image(pool: PgPool) {
-    let app = app(pool, Some(Arc::new(FakeReader(vec![])))).await;
+    let app = app(pool, Some(Arc::new(FakeReader(vec![], vec![])))).await;
     let (s, v) = send(&app, photo_request(b"%PDF-1.7 not an image")).await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
     assert_eq!(v["error"], "invalid_image");
@@ -127,7 +152,7 @@ async fn photo_must_be_an_image(pool: PgPool) {
 
 #[sqlx::test(migrator = "hey_doc_api::MIGRATOR")]
 async fn blurry_photo_asks_for_a_new_one(pool: PgPool) {
-    let app = app(pool, Some(Arc::new(FakeReader(vec![("Text", "~ ., 1 i")])))).await;
+    let app = app(pool, Some(Arc::new(FakeReader(vec![("Text", "~ ., 1 i")], vec![])))).await;
     let (s, v) = send(&app, photo_request(JPEG)).await;
     assert_eq!(s, StatusCode::OK);
     assert_eq!(v["status"], "unreadable");
@@ -208,4 +233,116 @@ async fn product_written_over_two_lines_in_english(pool: PgPool) {
     assert!(lines[0]["quantity"].is_null());
     assert_eq!(lines[0]["instructions"], json!(["Sig. Take one every 6 hours"]));
     assert_eq!(v["ignored_lines"], 3);
+}
+
+/// A real white JPEG, so that the archive can decode and mask it.
+fn white_jpeg() -> Vec<u8> {
+    let img = image::RgbImage::from_pixel(200, 100, image::Rgb([255, 255, 255]));
+    let mut out = vec![];
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 90).encode_image(&img).unwrap();
+    out
+}
+
+async fn archive_app(pool: PgPool, store: Arc<InMemory>) -> Router {
+    sqlx::raw_sql(FIXTURE).execute(&pool).await.unwrap();
+    let reader = FakeReader(
+        vec![("Text", "Dr KOUASSI Jean, médecin\nDOLIPRANE 1000 MG N°2\n1 cp 3 fois par jour\nKOUASSI")],
+        vec![("Dr KOUASSI Jean, médecin", 0.0), ("DOLIPRANE 1000 MG N°2", 0.3), ("1 cp 3 fois par jour", 0.45), ("KOUASSI", 0.85)],
+    );
+    hey_doc_api::router_with(AppState {
+        pool: pool.clone(),
+        reader: Some(Arc::new(reader)),
+        archive: Some(Arc::new(Archive::new(store, pool, 30))),
+    })
+}
+
+async fn wait_for_rows(pool: &PgPool, n: i64) {
+    for _ in 0..60 {
+        let count: i64 = sqlx::query_scalar("SELECT count(*) FROM prescription_reads").fetch_one(pool).await.unwrap();
+        if count == n {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    panic!("archive row not written");
+}
+
+#[sqlx::test(migrator = "hey_doc_api::MIGRATOR")]
+async fn consented_prescription_is_archived_masked(pool: PgPool) {
+    let store = Arc::new(InMemory::new());
+    let app = archive_app(pool.clone(), store.clone()).await;
+    let (s, v) = send(&app, photo_request_with(&white_jpeg(), &[("consent", "true"), ("channel", "whatsapp")])).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let id: uuid::Uuid = v["archive_id"].as_str().unwrap().parse().unwrap();
+
+    // Archiving runs after the response.
+    wait_for_rows(&pool, 1).await;
+    let (image_key, annotation_key, channel, kept, masked, search_text): (String, String, String, i32, i32, String) =
+        sqlx::query_as(
+            "SELECT image_key, annotation_key, channel, kept_regions, masked_regions, search_text
+             FROM prescription_reads WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!((channel.as_str(), kept, masked), ("whatsapp", 2, 2));
+    assert!(search_text.contains("DOLIPRANE") && !search_text.contains("KOUASSI"));
+
+    let annotation = store.get(&Path::from(annotation_key.as_str())).await.unwrap().bytes().await.unwrap();
+    let annotation = String::from_utf8(annotation.to_vec()).unwrap();
+    assert!(!annotation.contains("KOUASSI"), "no name in the annotation");
+    assert!(annotation.contains("DOLIPRANE 1000 MG N°2") && annotation.contains("\"to_review\""));
+
+    let image = store.get(&Path::from(image_key.as_str())).await.unwrap().bytes().await.unwrap();
+    let image = image::load_from_memory(&image).unwrap().to_rgb8();
+    assert!(image.get_pixel(100, 3).0.iter().all(|&c| c < 25), "doctor line masked");
+    assert!(image.get_pixel(100, 33).0.iter().all(|&c| c > 230), "product line kept");
+    assert!(image.get_pixel(100, 90).0.iter().all(|&c| c < 25), "signature masked");
+}
+
+#[sqlx::test(migrator = "hey_doc_api::MIGRATOR")]
+async fn nothing_is_archived_without_consent(pool: PgPool) {
+    let store = Arc::new(InMemory::new());
+    let app = archive_app(pool.clone(), store.clone()).await;
+    let (s, v) = send(&app, photo_request(&white_jpeg())).await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(v["archive_id"].is_null());
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let n: i64 = sqlx::query_scalar("SELECT count(*) FROM prescription_reads").fetch_one(&pool).await.unwrap();
+    assert_eq!(n, 0);
+    assert!(store.list(None).collect::<Vec<_>>().await.is_empty());
+}
+
+#[sqlx::test(migrator = "hey_doc_api::MIGRATOR")]
+async fn expired_archives_are_purged(pool: PgPool) {
+    let store = Arc::new(InMemory::new());
+    let app = archive_app(pool.clone(), store.clone()).await;
+    let (_, v) = send(&app, photo_request_with(&white_jpeg(), &[("consent", "oui")])).await;
+    assert!(v["archive_id"].is_string(), "{v}");
+    wait_for_rows(&pool, 1).await;
+
+    let archive = Archive::new(store.clone(), pool.clone(), 30);
+    assert_eq!(archive.purge_expired(chrono::Utc::now()).await.unwrap(), 0);
+    assert_eq!(archive.purge_expired(chrono::Utc::now() + chrono::Duration::days(31)).await.unwrap(), 1);
+    wait_for_rows(&pool, 0).await;
+    assert!(store.list(None).collect::<Vec<_>>().await.is_empty(), "objects deleted too");
+}
+
+/// Against a real S3 store: `docker compose up -d minio`, then
+/// `S3_ENDPOINT=http://127.0.0.1:9000 S3_ACCESS_KEY=hey_doc S3_SECRET_KEY=hey_doc_local_minio cargo test -- --ignored`.
+#[sqlx::test(migrator = "hey_doc_api::MIGRATOR")]
+#[ignore = "needs a running S3 store (MinIO)"]
+async fn archive_writes_to_a_real_s3_store(pool: PgPool) {
+    sqlx::raw_sql(FIXTURE).execute(&pool).await.unwrap();
+    let archive = Arc::new(Archive::from_env(pool.clone()).expect("S3_ENDPOINT").unwrap());
+    let reader = FakeReader(
+        vec![("Text", "Dr KOUASSI Jean\nDOLIPRANE 1000 MG N°2")],
+        vec![("Dr KOUASSI Jean", 0.0), ("DOLIPRANE 1000 MG N°2", 0.3)],
+    );
+    let app = hey_doc_api::router_with(AppState { pool: pool.clone(), reader: Some(Arc::new(reader)), archive: Some(archive.clone()) });
+    let (_, v) = send(&app, photo_request_with(&white_jpeg(), &[("consent", "true")])).await;
+    assert!(v["archive_id"].is_string(), "{v}");
+    wait_for_rows(&pool, 1).await;
+    assert_eq!(archive.purge_expired(chrono::Utc::now() + chrono::Duration::days(400)).await.unwrap(), 1);
 }

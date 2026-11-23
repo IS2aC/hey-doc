@@ -7,21 +7,39 @@
 use std::{future::Future, pin::Pin, time::Duration};
 
 use reqwest::{StatusCode, multipart};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// A photo checked by the route: its bytes and a file extension Reducto understands.
+#[derive(Clone)]
 pub struct Image {
     pub bytes: Vec<u8>,
     pub extension: &'static str,
+}
+
+/// A box in fractions of the page, `top` = 0 at the top edge.
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq)]
+pub struct BBox {
+    pub left: f64,
+    pub top: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// One line as located by the reader's OCR, used to mask the archived image line by line.
+pub struct OcrLine {
+    pub text: String,
+    pub bbox: BBox,
+    pub confidence: Option<f64>,
 }
 
 pub struct TextBlock {
     /// Reducto block type: `Text`, `List Item`, `Table`, `Header`…
     pub kind: String,
     pub content: String,
+    pub bbox: Option<BBox>,
     /// `parse_confidence` from 0 to 1, when given.
     pub confidence: Option<f64>,
     pub low_confidence: bool,
@@ -29,6 +47,7 @@ pub struct TextBlock {
 
 pub struct Transcript {
     pub blocks: Vec<TextBlock>,
+    pub ocr_lines: Vec<OcrLine>,
     pub pages: u32,
     pub provider: &'static str,
     pub model: String,
@@ -134,7 +153,8 @@ impl Reducto {
             .await
             .map_err(|e| ReadError::Unavailable(format!("upload : réponse illisible ({e})")))?;
 
-        let body = json!({ "input": upload.file_id, "settings": { "model": self.model } });
+        // OCR lines give the position of each written line, needed to mask the archived image.
+        let body = json!({ "input": upload.file_id, "settings": { "model": self.model, "return_ocr_data": true } });
         let parsed = self.send("parse", || self.http.post(self.url("/parse")).json(&body)).await;
         let parsed: Result<ParseResponse, ReadError> = match parsed {
             Ok(res) => res
@@ -145,34 +165,43 @@ impl Reducto {
         };
         let result = match parsed {
             Ok(p) => {
-                let chunks = match p.result {
-                    ParseResult::Full { chunks } => Ok(chunks),
+                let full = match p.result {
+                    ParseResult::Full { chunks, ocr } => Ok(FullResult { chunks, ocr }),
                     ParseResult::Url { url } => self.fetch_result(&url).await,
                 };
                 self.cleanup(&upload.file_id, Some(&p.job_id)).await;
-                chunks.map(|chunks| (chunks, p.usage.num_pages))
+                full.map(|full| (full, p.usage.num_pages))
             }
             Err(e) => {
                 self.cleanup(&upload.file_id, None).await;
                 Err(e)
             }
         }?;
-        let (chunks, pages) = result;
-        let blocks = chunks
+        let (full, pages) = result;
+        let ocr_lines = full
+            .ocr
+            .map(|o| o.lines)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|l| Some(OcrLine { text: l.text, bbox: l.bbox?, confidence: l.confidence }))
+            .collect();
+        let blocks = full
+            .chunks
             .into_iter()
             .flat_map(|c| c.blocks)
             .map(|b| TextBlock {
                 kind: b.kind,
                 content: b.content,
+                bbox: b.bbox,
                 confidence: b.granular_confidence.and_then(|g| g.parse_confidence),
                 low_confidence: b.confidence.as_deref() == Some("low"),
             })
             .collect();
-        Ok(Transcript { blocks, pages: pages.max(0.0) as u32, provider: "reducto", model: self.model.clone() })
+        Ok(Transcript { blocks, ocr_lines, pages: pages.max(0.0) as u32, provider: "reducto", model: self.model.clone() })
     }
 
     /// Large results come back as a link that expires after 12 hours.
-    async fn fetch_result(&self, url: &str) -> Result<Vec<Chunk>, ReadError> {
+    async fn fetch_result(&self, url: &str) -> Result<FullResult, ReadError> {
         let res = self
             .http
             .get(url)
@@ -181,8 +210,8 @@ impl Reducto {
             .and_then(|r| r.error_for_status())
             .map_err(|e| ReadError::Unavailable(format!("résultat : {}", e.without_url())))?;
         match res.json::<UrlResult>().await {
-            Ok(UrlResult::Chunks(chunks)) | Ok(UrlResult::Wrapped { chunks }) => Ok(chunks),
-            Ok(UrlResult::Result { result }) => Ok(result.chunks),
+            Ok(UrlResult::Chunks(chunks)) => Ok(FullResult { chunks, ocr: None }),
+            Ok(UrlResult::Wrapped(full)) | Ok(UrlResult::Result { result: full }) => Ok(full),
             Err(e) => Err(ReadError::Unavailable(format!("résultat illisible ({e})"))),
         }
     }
@@ -227,21 +256,41 @@ struct Usage {
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 enum ParseResult {
-    Full { chunks: Vec<Chunk> },
+    Full {
+        chunks: Vec<Chunk>,
+        #[serde(default)]
+        ocr: Option<Ocr>,
+    },
     Url { url: String },
 }
 
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum UrlResult {
-    Chunks(Vec<Chunk>),
-    Wrapped { chunks: Vec<Chunk> },
     Result { result: FullResult },
+    Chunks(Vec<Chunk>),
+    Wrapped(FullResult),
 }
 
 #[derive(Deserialize)]
 struct FullResult {
     chunks: Vec<Chunk>,
+    #[serde(default)]
+    ocr: Option<Ocr>,
+}
+
+#[derive(Deserialize)]
+struct Ocr {
+    #[serde(default)]
+    lines: Vec<OcrItem>,
+}
+
+#[derive(Deserialize)]
+struct OcrItem {
+    #[serde(default)]
+    text: String,
+    bbox: Option<BBox>,
+    confidence: Option<f64>,
 }
 
 #[derive(Deserialize)]
@@ -256,6 +305,7 @@ struct Block {
     kind: String,
     #[serde(default)]
     content: String,
+    bbox: Option<BBox>,
     confidence: Option<String>,
     granular_confidence: Option<Granular>,
 }
