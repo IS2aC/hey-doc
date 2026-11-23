@@ -2,16 +2,17 @@
 
 Le projet utilise l’image officielle PostgreSQL 17 avec Docker Compose. Le port `5433` est publié sur la boucle locale et les données persistent dans un volume nommé.
 
-Depuis la racine du dépôt, démarrer la base et appliquer la migration.
+Depuis la racine du dépôt, démarrer la base.
 
 ```sh
 docker compose up -d --wait postgres
-docker compose run --rm migrate
 ```
 
-La connexion locale par défaut est `postgresql://hey_doc:hey_doc_local@127.0.0.1:5433/hey_doc`. Pour ouvrir psql dans le conteneur, utiliser `docker compose exec postgres psql -U hey_doc -d hey_doc`. Les variables `HEYDOC_DB_PORT` et `HEYDOC_DB_PASSWORD` permettent de configurer le port et le mot de passe. Initialiser un nouveau volume avec le mot de passe voulu. Changer la variable après initialisation ne modifie pas le mot de passe stocké par PostgreSQL.
+Les migrations du dossier `migrations/` sont appliquées par SQLx au démarrage de l’API Rust, qui les enregistre dans la table `_sqlx_migrations`. Voir le [README de l’API](../api/README.md).
 
-Le service `migrate` applique la migration initiale dans une transaction et enregistre son numéro. La relance saute une migration déjà appliquée. Arrêter les conteneurs avec `docker compose down` conserve le volume.
+La connexion locale par défaut est `postgresql://hey_doc:hey_doc_local@127.0.0.1:5433/hey_doc`. Pour ouvrir psql dans le conteneur, utiliser `docker compose exec postgres psql -U hey_doc -d hey_doc`. Les variables `HEYDOC_DB_PORT` et `HEYDOC_DB_PASSWORD` permettent de configurer le port et le mot de passe. Initialiser un nouveau volume avec le mot de passe voulu. Changer la variable après initialisation ne modifie pas le mot de passe stocké par PostgreSQL. Arrêter les conteneurs avec `docker compose down` conserve le volume.
+
+Une base créée avant l’adoption de SQLx contient déjà les tables et une table `schema_migrations`. L’API refusera alors de démarrer. Si cette base ne contient que des données de test, la recréer avec `docker compose down -v`.
 
 ## Schéma
 

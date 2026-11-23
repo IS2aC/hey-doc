@@ -1,16 +1,3 @@
-BEGIN;
-
-SELECT pg_advisory_xact_lock(1040937771);
-CREATE TABLE IF NOT EXISTS schema_migrations (
-    version integer PRIMARY KEY,
-    applied_at timestamptz NOT NULL DEFAULT now()
-);
-SELECT EXISTS (SELECT FROM schema_migrations WHERE version = 1) AS applied \gset
-\if :applied
-    COMMIT;
-    \quit
-\endif
-
 CREATE EXTENSION pg_trgm;
 
 CREATE TABLE sources (
@@ -124,5 +111,3 @@ CREATE TABLE pharmacy_duties (
 );
 CREATE INDEX pharmacy_duties_period_idx ON pharmacy_duties USING gist (period);
 
-INSERT INTO schema_migrations (version) VALUES (1);
-COMMIT;
