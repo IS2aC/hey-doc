@@ -10,6 +10,7 @@ STEPS = {
     "cmu-hta": "cmu_hta",
     "dedup": "dedup",
     "load": "load",
+    "gmaps-match": "gmaps",
 }
 
 
@@ -19,7 +20,8 @@ def main() -> None:
     p.add_argument("--only", help="sous-partie d'une étape (site : duties, tables, directory, details)")
     p.add_argument("--limit", type=int, help="nombre maximal d'éléments, pour un essai")
     args = p.parse_args()
-    for step in STEPS if args.step == "all" else [args.step]:
+    # gmaps-match needs a manual search and review first: `all` leaves it out.
+    for step in [s for s in STEPS if s != "gmaps-match"] if args.step == "all" else [args.step]:
         print(f"== {step}", flush=True)
         mod = importlib.import_module(f"heydoc_pipeline.{STEPS[step]}")
         kwargs = {k: v for k, v in (("only", args.only), ("limit", args.limit)) if v is not None}

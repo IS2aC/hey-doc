@@ -114,7 +114,8 @@ def write_csv(path: Path, rows: list[dict], fields: list[str]) -> Path:
 
 
 def read_csv(path: Path) -> list[dict]:
-    with path.open(newline="", encoding="utf-8") as f:
+    # utf-8-sig: some tools (google-maps-scraper-kit, Excel) start the file with a BOM.
+    with path.open(newline="", encoding="utf-8-sig") as f:
         return list(csv.DictReader(f))
 
 

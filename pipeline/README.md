@@ -10,7 +10,7 @@ uv sync --extra ocr
 uv run python -m heydoc_pipeline all
 ```
 
-Les étapes peuvent être lancées une par une : `site`, `airp`, `mugef`, `cmu-hta`, `dedup`, `load`. Avant `load`, la base doit avoir reçu les migrations : il suffit de démarrer l'API une fois (voir [api/README.md](../api/README.md)). `DATABASE_URL` désigne la base, par défaut la base locale de Docker Compose.
+Les étapes peuvent être lancées une par une : `site`, `airp`, `mugef`, `cmu-hta`, `dedup`, `load`, `gmaps-match` (hors `all`, voir plus bas). Avant `load`, la base doit avoir reçu les migrations : il suffit de démarrer l'API une fois (voir [api/README.md](../api/README.md)). `DATABASE_URL` désigne la base, par défaut la base locale de Docker Compose.
 
 | Étape | Rôle | Durée |
 |---|---|---|
@@ -20,7 +20,8 @@ Les étapes peuvent être lancées une par une : `site`, `airp`, `mugef`, `cmu-h
 | `mugef` | Listes MUGEF-CI de septembre 2026 et novembre 2022 (PDF texte) | 25 s |
 | `cmu-hta` | Décision CMU HTA et diabète du 29/09/2025 (PDF scanné, OCR mis en cache) | 40 s la première fois |
 | `dedup` | Rapprochement des produits et des établissements | quelques secondes |
-| `load` | Rechargement complet des tables de référence, en une transaction | 15 s |
+| `load` | Rechargement complet des tables de référence, en une transaction. Applique les lignes acceptées de `review_gmaps.csv` s'il existe. | 15 s |
+| `gmaps-match` | Rapprochement des résultats Google Maps avec les pharmacies sans GPS ou sans adresse | quelques secondes |
 
 Toutes les réponses HTTP sont mises en cache dans `data/cache/` et les requêtes vers un même site sont espacées de 1,5 s. Une collecte interrompue reprend sans redemander les pages déjà reçues. Pour rafraîchir les gardes chaque semaine, relancer `site --only duties`, puis `dedup` et `load` : la page des gardes est considérée périmée au bout de 6 heures.
 
@@ -41,8 +42,11 @@ uv run pytest
 | MUGEF-CI, septembre 2026 | 5 754 lignes | Code, libellé, groupe, DCI, catégorie, générique ou spécialité, prix, régime (RCO, IVSPL). |
 | MUGEF-CI, novembre 2022 | 720 lignes | Code, libellé, groupe, DCI, catégorie, prix, régime CMU. |
 | Décision CMU n° 0016 du 29/09/2025 | 178 lignes (117 HTA, 61 diabète) | Molécule et dosage, spécialité, prix de la colonne « PRIX PUBLIC ». Texte de la décision dans `data/staging/cmu_hta_decision.txt`. |
+| Google Maps, recherche par officine | 135 pharmacies recherchées | Nom, catégorie, adresse, téléphone, GPS, identifiant de lieu. Seulement pour compléter les champs vides. |
 
 pharmacies-de-garde.ci est un site privé (« All rights reserved »). Son robots.txt autorise l'exploration, mais la réutilisation de ses données dans le produit doit être validée avec l'éditeur. Les sources officielles (AIRP, MUGEF-CI, CNAM) sont prioritaires quand elles couvrent le même besoin.
+
+Les conditions d'utilisation de Google interdisent le scraping de Google Maps. Les résultats sont relus avant chargement et chaque valeur reprise garde sa provenance (source « Google Maps (recherche par officine) », drapeau `gmaps_enrichi`), pour pouvoir être retirée.
 
 ## Sorties
 
@@ -51,6 +55,13 @@ pharmacies-de-garde.ci est un site privé (« All rights reserved »). Son robot
 - `data/out/review_*.csv` : les cas que le pipeline n'a pas tranchés. Rien n'y est fusionné.
 
 Dans PostgreSQL, `establishments` regroupe tous les établissements et `establishment_sources` garde chaque enregistrement source brut (JSON) avec sa méthode de rapprochement. `pharmacies` contient les officines utilisées par l'API, reliées à leur établissement.
+
+## Compléter les pharmacies avec Google Maps
+
+1. Lancer la recherche avec google-maps-scraper-kit, un mot-clé par pharmacie de `data/gmaps/targets.csv` (correspondance dans `keyword_map.csv`), et copier le CSV produit dans `data/gmaps/results.csv`.
+2. `uv run python -m heydoc_pipeline gmaps-match` écrit `data/out/review_gmaps.csv` : meilleur candidat par pharmacie, niveau de confiance (haute, moyenne, faible, rejeté, introuvable) et colonne `accept`, préremplie à « oui » pour la confiance haute.
+3. Relire le fichier et corriger `accept`.
+4. `load` applique les lignes acceptées en retrouvant l'établissement par `ref`. Il ne complète que les champs vides (GPS, adresse) et ajoute le téléphone s'il manque, sans jamais remplacer une valeur. Une position à plus de 30 km de la médiane de la ville est ignorée. La ligne relue est gardée dans `establishment_sources` (méthode `gmaps_search`, clé = identifiant de lieu Google).
 
 ## Règles de rapprochement
 
@@ -74,6 +85,7 @@ Dans PostgreSQL, `establishments` regroupe tous les établissements et `establis
 | | 48 + 11 | Gardes sans établissement connu ou ambiguës |
 | `review_products.csv` | 306 | Produits de 2022 absents de l'édition 2026 |
 | | 49 | Lignes de la décision CMU non rapprochées, souvent à cause de l'OCR |
+| `review_gmaps.csv` | 135 | Pharmacies sans GPS ou sans adresse et leur meilleur candidat Google Maps : 11 de confiance haute, 54 moyenne, 62 faible, 8 introuvables |
 | `data/staging/cmu_hta.csv` | 40 | Lignes OCR de confiance inférieure à 0,97, colonne `review` |
 
 ## Points à valider

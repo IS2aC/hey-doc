@@ -51,3 +51,50 @@ def test_names_and_places():
     assert commune_of("ABOBO PK 18") == "Abobo"
     assert commune_of("ZONE AKOUEDO + PALMERAIE EXTENSION + ABATTA") == "Cocody"
     assert commune_of("Port-Bouët") == "Port-Bouët"
+
+
+def test_gmaps_score_needs_a_pharmacy_with_matching_name_and_place():
+    from heydoc_pipeline.gmaps import _score
+
+    ours = {"name": "Pharmacie Amina T", "commune": "Abobo", "city": "Abidjan",
+            "latitude": "", "longitude": "", "phones": "0707070707"}
+    hit = {"title": "PHARMACIE AMINA T", "category": "Pharmacie", "address": "Route d'Alépé, Abobo, Abidjan",
+           "latitude": "5.42", "longitude": "-4.02", "phone": ""}
+    assert _score(ours, hit)[0] == "haute"
+    assert _score(ours, {**hit, "category": "Supermarché"})[0] == "rejeté"
+    assert _score(ours, {**hit, "title": "Pharmacie du Plateau", "address": "Plateau, Abidjan"})[0] == "faible"
+    assert _score(ours, {**hit, "title": "Pharmacie X", "phone": "+225 07 07 07 07 07"})[0] == "haute"
+
+
+def test_gmaps_fills_only_empty_fields():
+    from heydoc_pipeline.load import apply_gmaps
+
+    def est(ref, **kw):
+        return {"est_id": ref, "city": "Daloa", "address": "", "lat": "", "lng": "", "phones": "", "flags": "", **kw}
+
+    ests = [
+        est("a", lat="6.870000", lng="-6.450000"),
+        est("b", lat="6.880000", lng="-6.440000"),
+        est("vide"),
+        est("plein", address="Quartier Lobia", lat="6.875000", lng="-6.445000", phones="0707070707", flags="x"),
+        est("loin"),
+    ]
+    google = {"accept": "oui", "gmaps_address": "Rue Google", "gmaps_phone": "+225 05 05 05 05 05",
+              "gmaps_lat": "6.876", "gmaps_lng": "-6.446", "gmaps_place_id": "p1", "name_score": "0.95"}
+    review = [
+        {**google, "ref": "vide"},
+        {**google, "ref": "plein", "gmaps_place_id": "p2", "accept": "OUI"},
+        {**google, "ref": "loin", "gmaps_lat": "5.36", "gmaps_lng": "-4.01", "gmaps_place_id": "p3"},
+        {**google, "ref": "a", "accept": ""},
+    ]
+    links, counts = apply_gmaps(ests, review)
+    vide, plein, loin = ests[2], ests[3], ests[4]
+    assert (vide["address"], vide["lat"], vide["lng"]) == ("Rue Google", "6.876000", "-6.446000")
+    assert vide["phones"] == "0505050505" and vide["flags"] == "gmaps_enrichi"
+    assert (plein["address"], plein["lat"], plein["lng"]) == ("Quartier Lobia", "6.875000", "-6.445000")
+    assert plein["phones"] == "0707070707 0505050505" and plein["flags"] == "x ; gmaps_enrichi"
+    assert loin["lat"] == "" and loin["address"] == ""  # Abidjan position for a Daloa pharmacy
+    assert ests[0]["address"] == ""  # not accepted
+    assert [l["record_key"] for l in links] == ["p1", "p2"]
+    assert counts["gps"] == 1 and counts["adresse"] == 1 and counts["téléphone"] == 2
+    assert counts["position à plus de 30 km de la médiane de la ville"] == 1

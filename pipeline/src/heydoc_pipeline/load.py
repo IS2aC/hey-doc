@@ -8,13 +8,15 @@ from __future__ import annotations
 
 import json
 import os
+import statistics
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 
 import psycopg
 from psycopg.types.json import Jsonb
 
-from .common import OUT, STAGING, read_csv
+from .common import DATA, OUT, STAGING, norm_coord, norm_phone, read_csv
+from .normalize import distance_m
 
 DEFAULT_URL = "postgresql://hey_doc:hey_doc_local@127.0.0.1:5433/hey_doc"
 TABLES = ["pharmacy_duties", "duty_schedules", "coverage_entries", "coverage_listings", "prices",
@@ -30,7 +32,12 @@ SOURCES = {
     "mugef-2026-09": ("MUGEF-CI", "Liste des médicaments remboursables, édition septembre 2026", date(2026, 9, 8), None, "document officiel"),
     "mugef-2022-11": ("MUGEF-CI", "Liste des médicaments remboursables, édition novembre 2022", date(2022, 11, 10), None, "document officiel"),
     "cmu-hta-2025": ("AIRP/CNAM/DGCMU", "Décision n° 0016 du 29/09/2025, médicaments du diabète et de l'HTA", date(2025, 9, 29), None, "document officiel (OCR)"),
+    # Reference completed with the collection date at load time.
+    "gmaps": ("Google", "Google Maps (recherche par officine)", None, "https://www.google.com/maps", "web"),
 }
+GMAPS_REVIEW = OUT / "review_gmaps.csv"
+GMAPS_RESULTS = DATA / "gmaps" / "results.csv"
+GMAPS_MAX_KM = 30
 COVERAGE_LISTINGS = {
     ("mugef-2026-09", "RCO"): ("MUGEF-CI", "RCO"),
     ("mugef-2026-09", "IVSPL"): ("MUGEF-CI", "IVSPL"),
@@ -59,6 +66,63 @@ def _num(v):
     return None if v in (None, "") else v
 
 
+def apply_gmaps(ests: list[dict], review: list[dict]) -> tuple[list[dict], dict[str, int]]:
+    """Fill the empty fields of `ests` (rows of establishments.csv, changed in place) from the
+    accepted rows of review_gmaps.csv. An existing value is never replaced.
+
+    Rows are found by `ref`, the only stable key. A Google position more than 30 km from the median
+    of the town's known positions skips the whole row. Returns the source links and the counts.
+    """
+    by_ref = {e["est_id"]: e for e in ests}
+    coords: dict[str, list[tuple[float, float]]] = defaultdict(list)
+    for e in ests:
+        if e["city"] and e["lat"] and e["lng"]:
+            coords[e["city"]].append((float(e["lat"]), float(e["lng"])))
+    median = {c: (statistics.median(p[0] for p in pts), statistics.median(p[1] for p in pts)) for c, pts in coords.items()}
+
+    links, counts = [], defaultdict(int)
+    for r in review:
+        if (r.get("accept") or "").strip().lower() != "oui":
+            continue
+        e = by_ref.get(r.get("ref"))
+        if e is None:
+            counts["référence inconnue"] += 1
+            continue
+        lat, lng = norm_coord(r.get("gmaps_lat"), -90, 90), norm_coord(r.get("gmaps_lng"), -180, 180)
+        if not (lat and lng):
+            lat = lng = None
+        elif not (4 <= float(lat) <= 11 and -9 <= float(lng) <= -2):
+            counts["position hors de Côte d'Ivoire"] += 1
+            continue
+        elif e["city"] in median and distance_m(*median[e["city"]], lat, lng) > GMAPS_MAX_KM * 1000:
+            counts[f"position à plus de {GMAPS_MAX_KM} km de la médiane de la ville"] += 1
+            continue
+        changed = False
+        if lat and not (e["lat"] and e["lng"]):
+            e["lat"], e["lng"] = lat, lng
+            counts["gps"] += 1
+            changed = True
+        address = (r.get("gmaps_address") or "").strip()
+        if address and not (e["address"] or "").strip():
+            e["address"] = address
+            counts["adresse"] += 1
+            changed = True
+        phone = norm_phone(r.get("gmaps_phone"))
+        phones = e["phones"].split()
+        if phone and phone not in phones:
+            e["phones"] = " ".join([*phones, phone])
+            counts["téléphone"] += 1
+            changed = True
+        flags = [f for f in e["flags"].split(" ; ") if f]
+        if changed and "gmaps_enrichi" not in flags:
+            e["flags"] = " ; ".join([*flags, "gmaps_enrichi"])
+        counts["établissements enrichis" if changed else "rien à compléter"] += 1
+        links.append({"est_id": e["est_id"], "record_key": r.get("gmaps_place_id") or f"ref:{e['est_id']}",
+                      "match_score": _num(r.get("name_score")), "distance_m": _num(r.get("distance_m")),
+                      "data": {k: v for k, v in r.items() if v not in (None, "")}})
+    return links, dict(counts)
+
+
 def run() -> None:
     url = os.environ.get("DATABASE_URL", DEFAULT_URL)
     ests = read_csv(OUT / "establishments.csv")
@@ -74,6 +138,9 @@ def run() -> None:
         "site-gardes": {f"{r['zone']}#{r['source_row']}": r for r in read_csv(STAGING / "site_duties.csv")},
     }
     week_start = date.fromisoformat(duties[0]["week_start"]) if duties else None
+    gmaps_links, gmaps_counts = apply_gmaps(ests, read_csv(GMAPS_REVIEW)) if GMAPS_REVIEW.exists() else ([], {})
+    collected = GMAPS_RESULTS if GMAPS_RESULTS.exists() else GMAPS_REVIEW
+    gmaps_date = date.fromtimestamp(collected.stat().st_mtime) if collected.exists() else None
 
     with psycopg.connect(url) as conn, conn.cursor() as cur:
         cur.execute(f"TRUNCATE {', '.join(TABLES)} RESTART IDENTITY CASCADE")
@@ -82,6 +149,8 @@ def run() -> None:
         for key, (publisher, reference, published, src_url, kind) in SOURCES.items():
             if key == "site-gardes" and week_start:
                 reference = f"{reference}, semaine du {week_start.isoformat()}"
+            if key == "gmaps" and gmaps_date:
+                reference = f"{reference}, collecte du {gmaps_date.isoformat()}"
             cur.execute("INSERT INTO sources (publisher, reference, published_on, url, kind) VALUES (%s, %s, %s, %s, %s) RETURNING id",
                         (publisher, reference, published, src_url, kind))
             src[key] = cur.fetchone()[0]
@@ -107,6 +176,12 @@ def run() -> None:
                    VALUES (%s,%s,%s,%s,%s,%s,%s)""",
                 (est_id[l["est_id"]], src[l["source"]], l["source_record"], l["match_method"], _num(l["match_score"]),
                  _num(l["distance_m"]), Jsonb({k: v for k, v in data.items() if v not in (None, "")})))
+        for l in gmaps_links:
+            cur.execute(
+                """INSERT INTO establishment_sources (establishment_id, source_id, record_key, match_method, match_score, distance_m, data)
+                   VALUES (%s,%s,%s,'gmaps_search',%s,%s,%s) ON CONFLICT DO NOTHING""",
+                (est_id[l["est_id"]], src["gmaps"], l["record_key"], l["match_score"],
+                 round(float(l["distance_m"])) if l["distance_m"] else None, Jsonb(l["data"])))
 
         # Operational pharmacies (used by the API) are grouped by sector: commune in Abidjan, town elsewhere.
         sector_id: dict[tuple[str, str], int] = {}
@@ -203,3 +278,5 @@ def run() -> None:
               f"{pr} présentations, {px} prix, {cov} couvertures, {links} enregistrements sources")
         for k, v in skipped.items():
             print(f"  ignoré : {v} {k}")
+        if gmaps_counts:
+            print("  Google Maps : " + ", ".join(f"{k} {v}" for k, v in sorted(gmaps_counts.items())))
