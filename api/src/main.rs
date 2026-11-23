@@ -21,7 +21,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("Hey-Doc API sur http://{addr}");
-    axum::serve(listener, hey_doc_api::router(pool))
+    let reader = hey_doc_api::reducto::Reducto::from_env()
+        .map(|r| std::sync::Arc::new(r) as std::sync::Arc<dyn hey_doc_api::reducto::PrescriptionReader>);
+    if reader.is_none() {
+        tracing::warn!("REDUCTO_API_KEY absent : la lecture de photo répondra 503, la saisie texte reste disponible");
+    }
+    axum::serve(listener, hey_doc_api::router_with_reader(pool, reader))
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })

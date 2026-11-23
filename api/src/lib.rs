@@ -1,9 +1,14 @@
 mod catalog;
 mod duty;
 mod estimates;
+mod prescriptions;
+pub mod reducto;
+
+use std::sync::Arc;
 
 use axum::{
     Json, Router,
+    extract::{DefaultBodyLimit, FromRef},
     extract::rejection::{JsonRejection, PathRejection, QueryRejection},
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -22,7 +27,8 @@ pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../database/migra
         title = "API de données Hey-Doc",
         description = "Catalogue, prix, couverture, estimation au comptant et pharmacies de garde. \
             Les montants sont des chaînes décimales exactes en FCFA. Les instants sont en UTC, \
-            qui est aussi l’heure locale d’Abidjan."
+            qui est aussi l’heure locale d’Abidjan. La lecture d’ordonnance rapproche chaque ligne \
+            du catalogue et laisse la personne trancher les lignes ambiguës."
     ),
     paths(
         health,
@@ -30,12 +36,32 @@ pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../database/migra
         catalog::prices,
         catalog::coverage,
         estimates::create,
-        duty::search
+        duty::search,
+        prescriptions::read,
+        prescriptions::match_text
     )
 )]
 pub struct ApiDoc;
 
+/// Shared by the handlers. Most only need the pool, through `FromRef`.
+#[derive(Clone)]
+pub struct AppState {
+    pub pool: PgPool,
+    /// `None` when no reader is configured: photo reading then answers 503.
+    pub reader: Option<Arc<dyn reducto::PrescriptionReader>>,
+}
+
+impl FromRef<AppState> for PgPool {
+    fn from_ref(state: &AppState) -> PgPool {
+        state.pool.clone()
+    }
+}
+
 pub fn router(pool: PgPool) -> Router {
+    router_with_reader(pool, None)
+}
+
+pub fn router_with_reader(pool: PgPool, reader: Option<Arc<dyn reducto::PrescriptionReader>>) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/v1/products/search", get(catalog::search))
@@ -43,7 +69,13 @@ pub fn router(pool: PgPool) -> Router {
         .route("/v1/presentations/{id}/coverage", get(catalog::coverage))
         .route("/v1/estimates", post(estimates::create))
         .route("/v1/duty-pharmacies", get(duty::search))
-        .with_state(pool)
+        .route(
+            "/v1/prescriptions/read",
+            // The multipart envelope adds a few bytes around the image.
+            post(prescriptions::read).layer(DefaultBodyLimit::max(prescriptions::MAX_IMAGE_BYTES + 64 * 1024)),
+        )
+        .route("/v1/prescriptions/match", post(prescriptions::match_text))
+        .with_state(AppState { pool, reader })
         .merge(SwaggerUi::new("/docs").url("/docs/openapi.json", ApiDoc::openapi()))
 }
 
@@ -61,6 +93,10 @@ async fn health(
 pub enum ApiError {
     BadRequest(&'static str, String),
     NotFound(&'static str),
+    /// A dependency is not configured or is down (503).
+    Unavailable(&'static str, String),
+    /// A dependency answered with an error (502).
+    Upstream(&'static str, String),
     Db(sqlx::Error),
 }
 
@@ -102,6 +138,8 @@ impl IntoResponse for ApiError {
             ApiError::NotFound(code) => {
                 (StatusCode::NOT_FOUND, code, "Ressource introuvable".into())
             }
+            ApiError::Unavailable(code, msg) => (StatusCode::SERVICE_UNAVAILABLE, code, msg),
+            ApiError::Upstream(code, msg) => (StatusCode::BAD_GATEWAY, code, msg),
             ApiError::Db(e) => {
                 tracing::error!(error = %e, "database error");
                 (
