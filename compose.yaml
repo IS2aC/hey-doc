@@ -1,0 +1,45 @@
+name: hey-doc
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: hey_doc
+      POSTGRES_USER: hey_doc
+      POSTGRES_PASSWORD: ${HEYDOC_DB_PASSWORD:-hey_doc_local}
+    ports:
+      - "127.0.0.1:${HEYDOC_DB_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U hey_doc -d hey_doc"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  migrate:
+    profiles: [tools]
+    image: postgres:17
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${HEYDOC_DB_PASSWORD:-hey_doc_local}
+    volumes:
+      - ./database/migrations:/migrations:ro
+    command:
+      - psql
+      - -h
+      - postgres
+      - -U
+      - hey_doc
+      - -d
+      - hey_doc
+      - -X
+      - -v
+      - ON_ERROR_STOP=1
+      - -f
+      - /migrations/001_catalogue.sql
+
+volumes:
+  postgres_data:
