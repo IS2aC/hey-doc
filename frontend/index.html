@@ -24,6 +24,7 @@
   </header>
 
   <main id="contenu">
+    <div class="scroll-progress" aria-hidden="true"></div>
     <section class="hero wrap" aria-labelledby="headline">
       <div class="hero-copy">
         <p class="eyebrow"><span></span> Assistant pharmacie en Côte d’Ivoire</p>
@@ -45,7 +46,7 @@
       </div>
     </section>
 
-    <section id="fonctionnement" class="feature-section" aria-labelledby="features-title">
+    <section id="fonctionnement" class="feature-section" data-reveal aria-labelledby="features-title">
       <div class="wrap features">
         <div class="section-intro">
           <h2 id="features-title">Préparez votre passage en pharmacie.</h2>
@@ -64,7 +65,63 @@
       </div>
     </section>
 
-    <section id="demo" class="wrap demo" aria-labelledby="demo-title">
+
+    <section class="story" aria-labelledby="story-title">
+      <div class="wrap story-grid">
+        <div class="story-copy">
+          <h2 id="story-title" data-reveal>De la photo<br> au prix en FCFA.</h2>
+          <ol class="story-steps">
+            <li data-reveal data-step="capture">
+              <span aria-hidden="true">01</span>
+              <h3>Photographiez votre ordonnance</h3>
+              <p>Cadrez la page entière. Une photo lisible aide à retrouver le nom et le dosage de chaque produit.</p>
+            </li>
+            <li data-reveal data-step="lecture">
+              <span aria-hidden="true">02</span>
+              <h3>Vérifiez ce que Hey-Doc a lu</h3>
+              <p>Les produits identifiés s’affichent avec leur présentation. Une ligne difficile à lire reste à confirmer en pharmacie.</p>
+            </li>
+            <li data-reveal data-step="budget">
+              <span aria-hidden="true">03</span>
+              <h3>Voyez combien prévoir</h3>
+              <p>Le sous-total additionne les lignes avec un prix comptant disponible. Vous voyez aussi les lignes encore à vérifier.</p>
+            </li>
+          </ol>
+          <a class="button primary story-action" href="#demo" data-select="ordonnance">Essayer l’exemple complet</a>
+        </div>
+        <div class="story-preview" aria-hidden="true">
+          <div class="story-stage" data-scene="capture">
+            <div class="stage-brand"><img src="../branding/heydoc-mascotte.svg" width="38" height="38" alt=""> Hey-Doc <span>Exemple fictif</span></div>
+            <div class="stage-content">
+              <div class="scene" data-scene-panel="capture">
+                <div class="paper">
+                  <strong>Ordonnance</strong>
+                  <i></i><i></i><i></i>
+                </div>
+                <p>Photo de votre ordonnance</p>
+              </div>
+              <div class="scene" data-scene-panel="lecture">
+                <div class="scene-row"><strong>Produit A</strong><span>500 mg</span></div>
+                <div class="scene-row"><strong>Produit B</strong><span>20 mg</span></div>
+                <div class="scene-row scene-warning"><strong>Ligne 3</strong><span>À confirmer</span></div>
+                <p>Présentations identifiées</p>
+              </div>
+              <div class="scene" data-scene-panel="budget">
+                <div class="scene-total">
+                  <span>Sous-total sans bon</span>
+                  <strong>6 100 <small>FCFA</small></strong>
+                  <span>2 lignes chiffrées sur 3</span>
+                </div>
+                <p>Estimation en pharmacie</p>
+              </div>
+            </div>
+            <div class="stage-indicators"><i></i><i></i><i></i></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="demo" class="wrap demo" data-reveal aria-labelledby="demo-title">
       <div class="section-intro">
         <h2 id="demo-title">À quoi ressemble une réponse Hey-Doc ?</h2>
         <p>Essayez les deux parcours avec des exemples fictifs.</p>
@@ -95,7 +152,7 @@
       </div>
     </section>
 
-    <section id="faq" class="faq-section" aria-labelledby="faq-title">
+    <section id="faq" class="faq-section" data-reveal aria-labelledby="faq-title">
       <div class="wrap faq">
         <h2 id="faq-title">Questions fréquentes</h2>
         <div class="questions">

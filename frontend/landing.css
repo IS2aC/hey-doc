@@ -101,3 +101,88 @@ h2 { font-size: clamp(1.95rem, 4vw, 3.05rem); line-height: 1.08; letter-spacing:
   .sample { bottom: 12px; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+.scroll-progress {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 5;
+  height: 3px;
+  pointer-events: none;
+  background: var(--brand);
+  transform: scaleX(var(--scroll-progress, 0));
+  transform-origin: left;
+}
+.story { background: var(--ink); color: white; }
+.story-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.1fr;
+  align-items: start;
+  gap: clamp(24px, 7vw, 100px);
+  padding-block: 72px;
+}
+.story-copy h2 { font-size: clamp(2.5rem, 5.3vw, 5rem); }
+.story-steps { list-style: none; margin: 30px 0 0; padding: 0; }
+.story-steps li {
+  position: relative;
+  min-height: clamp(180px, 32vh, 300px);
+  padding: 22px 12px 28px 62px;
+  border-top: 1px solid #ffffff35;
+}
+.story-steps li > span { position: absolute; left: 0; top: 22px; color: #83f0d2; font-variant-numeric: tabular-nums; }
+.story-steps h3 { font-size: clamp(1.2rem, 2.4vw, 1.75rem); line-height: 1.25; }
+.story-steps p { margin-top: 8px; max-width: 42ch; color: #d4e0ee; }
+.story-steps li.is-current { border-color: #83f0d2; }
+.story-action { background: var(--mint); color: var(--ink); }
+.story-action:hover { background: #a5f3d4; }
+.story-preview { position: sticky; top: clamp(24px, 14vh, 124px); }
+.story-stage {
+  isolation: isolate;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 35%, #effff9, #bcefe0);
+  color: var(--ink);
+  border-radius: 28px;
+  padding: clamp(14px, 3vw, 28px);
+}
+.stage-brand { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 800; }
+.stage-brand span { margin-left: auto; color: var(--muted); font-size: .85rem; font-weight: 600; }
+.stage-content { display: grid; min-height: 260px; align-items: center; }
+.scene {
+  grid-area: 1 / 1;
+  width: min(100%, 310px);
+  margin: auto;
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity .32s ease, transform .32s ease;
+}
+.story-stage[data-scene="capture"] [data-scene-panel="capture"],
+.story-stage[data-scene="lecture"] [data-scene-panel="lecture"],
+.story-stage[data-scene="budget"] [data-scene-panel="budget"] { opacity: 1; transform: none; }
+.scene p { margin-top: 16px; text-align: center; color: var(--action-hover); font-weight: 750; }
+.paper { width: 140px; margin: auto; padding: 21px; background: white; border-radius: 13px; box-shadow: var(--shadow); transform: rotate(-7deg); }
+.paper i { display: block; height: 7px; margin-top: 12px; background: #cee3dd; border-radius: 20px; }
+.paper i:nth-child(odd) { width: 76%; }
+.scene-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 10px; padding: 9px 13px; margin-block: 7px; background: white; border-radius: 10px; }
+.scene-warning { background: var(--warning-bg); color: var(--warning-ink); }
+.scene-total { background: var(--ink); color: var(--mint); border-radius: 16px; padding: 22px; }
+.scene-total strong { display: block; color: white; font-size: clamp(2rem, 4.5vw, 3.5rem); line-height: 1.15; font-variant-numeric: tabular-nums; }
+.scene-total small { font-size: .4em; }
+.stage-indicators { display: flex; justify-content: center; gap: 6px; }
+.stage-indicators i { width: 16px; height: 4px; border-radius: 9px; background: #91cabc; }
+.story-stage[data-scene="capture"] .stage-indicators i:nth-child(1),
+.story-stage[data-scene="lecture"] .stage-indicators i:nth-child(2),
+.story-stage[data-scene="budget"] .stage-indicators i:nth-child(3) { background: var(--action); }
+@media (prefers-reduced-motion: no-preference) {
+  .hero-art img { transform: translateY(var(--hero-drift, 0px)); }
+  .motion-ready [data-reveal] { transition: opacity .55s ease, transform .55s ease; }
+  .motion-ready [data-reveal]:not(.is-visible):not(:focus-within) { opacity: 0; transform: translateY(24px); }
+}
+@media (max-width: 700px) {
+  .story-grid { grid-template-columns: 1fr; gap: 20px; padding-block: 44px; }
+  .story-steps li { min-height: 0; padding: 16px 4px 20px 38px; }
+  .story-steps li > span { top: 16px; }
+  .story-preview { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scroll-progress { display: none; }
+  .scene { transition: none; }
+}
