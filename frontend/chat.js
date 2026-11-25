@@ -70,29 +70,63 @@
   // --- Messages ---------------------------------------------------------------------------
 
   const statusLabel = { matched: 'Trouvé', ambiguous: 'À choisir', no_match: 'À confirmer' };
+  const number = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
+  const fcfa = (min, max) => (Number(min) === Number(max)
+    ? `${number.format(min)} FCFA`
+    : `${number.format(min)} à ${number.format(max)} FCFA`);
+  const plural = (n, word) => `${n} ${word}${n > 1 ? 's' : ''}`;
+  const month = date => new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' }).format(new Date(`${date}T12:00:00`));
+
+  function priceBlock(line) {
+    const p = line.price;
+    const cheapest = p.options[0];
+    const quantity = p.basis === 'units'
+      ? `Pour ${line.units} unités : ${plural(cheapest.boxes, 'boîte')} de ${cheapest.pack_size} avec la moins chère`
+      : p.basis === 'boxes'
+        ? `Pour ${plural(line.quantity, 'boîte')}`
+        : 'Prix d’une boîte : la quantité n’est pas écrite sur l’ordonnance';
+    const options = p.options.map(o => `<li>
+        <span>${escape(o.label)}</span>
+        <small>${o.boxes > 1 ? `${o.boxes} × ${number.format(o.box_price_fcfa)} = ` : ''}<b>${number.format(o.cost_fcfa)} FCFA</b></small>
+      </li>`).join('');
+    const brands = p.count > 1 ? `Voir les ${p.count} marques et boîtes` : 'Voir la présentation';
+    return `<p class="rx-price">${fcfa(p.min_fcfa, p.max_fcfa)}</p>
+      <p class="rx-meta">${escape(quantity)}${p.count > 1 ? ' · selon la marque disponible' : ''}</p>
+      <details class="brands"><summary>${brands}</summary><ul class="candidates">${options}</ul></details>`;
+  }
 
   function prescriptionCard(data) {
     if (!data || data.status === 'unreadable' || !data.lines?.length) return '';
     const lines = data.lines.map(line => {
-      const meta = [
-        line.quantity ? `${line.quantity} boîte${line.quantity > 1 ? 's' : ''}` : null,
-        line.units ? `${line.units} unités` : null,
-        line.instructions?.length ? line.instructions.join(' · ') : null,
-      ].filter(Boolean).join(' · ');
+      const posology = line.instructions?.length ? `<p class="rx-meta rx-posology">${escape(line.instructions.join(' · '))}</p>` : '';
+      if (line.price) {
+        return `<div class="rx-line">
+          <div class="rx-line-head"><strong>${escape(line.text)}</strong></div>
+          ${posology}
+          ${priceBlock(line)}
+        </div>`;
+      }
       const candidates = (line.candidates ?? []).slice(0, 3).map(c =>
         `<li><span>${escape(c.label)}</span><small>${escape([c.dosage_form, c.pack].filter(Boolean).join(' · '))}</small></li>`).join('');
       return `<div class="rx-line">
         <div class="rx-line-head"><strong>${escape(line.text)}</strong><span class="badge ${line.status}">${statusLabel[line.status] ?? ''}</span></div>
-        ${meta ? `<p class="rx-meta">${escape(meta)}</p>` : ''}
-        ${candidates ? `<ul class="candidates">${candidates}</ul>` : ''}
+        ${posology}
+        <p class="rx-meta">${line.status === 'no_match' ? 'Introuvable dans le catalogue : à confirmer en pharmacie.' : 'Prix non publié pour ce produit.'}</p>
+        ${candidates ? `<details class="brands"><summary>Voir les produits possibles</summary><ul class="candidates">${candidates}</ul></details>` : ''}
       </div>`;
     }).join('');
     const n = data.lines.length;
-    return `<div class="rx-card">
-      <header><strong>Ordonnance relevée</strong><span>${n} ligne${n > 1 ? 's' : ''}</span></header>
-      ${lines}
-      <p class="rx-foot">Montrez ces lignes à votre pharmacien : il confirme le produit, le dosage et la boîte.</p>
-    </div>`;
+    const e = data.estimate;
+    const dates = data.lines.map(l => l.price?.published_on).filter(Boolean).sort();
+    const head = e
+      ? `<header><div><span class="rx-kicker">Estimation de l’ordonnance</span><strong class="rx-total">${fcfa(e.min_fcfa, e.max_fcfa)}</strong></div>
+          <span>${e.priced_lines === e.total_lines ? plural(n, 'ligne') : `${e.priced_lines} sur ${n} lignes chiffrées`}</span></header>`
+      : `<header><strong>Ordonnance relevée</strong><span>${plural(n, 'ligne')}</span></header>`;
+    const notes = [];
+    if (e) notes.push(`Prix publiés par la MUGEF-CI${dates.length ? ` (${month(dates.at(-1))})` : ''}, pas des prix relevés au comptoir.`);
+    if (e?.per_box_lines) notes.push('Sans quantité écrite, une ligne est comptée pour une boîte.');
+    notes.push('Votre pharmacien confirme la marque, le dosage et le nombre de boîtes.');
+    return `<div class="rx-card">${head}${lines}<p class="rx-foot">${notes.join(' ')}</p></div>`;
   }
 
   function messageElement(m) {

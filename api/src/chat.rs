@@ -179,8 +179,9 @@ pub async fn send(
 
     let mut reply = None;
     if prescriptions::looks_like_prescription(&text) {
-        let read = prescriptions::match_typed(&state.pool, &text).await?;
+        let mut read = prescriptions::match_typed(&state.pool, &text).await?;
         if read.line_count() > 0 {
+            crate::pricing::add_price_ranges(&state.pool, &mut read).await?;
             reply = Some(Reply { kind: "prescription", content: read.summary(), data: serde_json::to_value(&read).ok() });
         }
     }
@@ -264,7 +265,8 @@ pub async fn photo(State(state): State<AppState>, headers: HeaderMap, mut multip
         owned(&state.pool, signup, id).await?;
     }
     let Some(reader) = state.reader.clone() else { return Err(prescriptions::no_reader()) };
-    let read = prescriptions::read_image(reader.as_ref(), &state.pool, image).await?;
+    let mut read = prescriptions::read_image(reader.as_ref(), &state.pool, image).await?;
+    crate::pricing::add_price_ranges(&state.pool, &mut read).await?;
     let reply = Reply { kind: "prescription", content: read.summary(), data: serde_json::to_value(&read).ok() };
     let title = format!("Ordonnance du {}", Utc::now().format("%d/%m"));
     let exchange = store(&state.pool, signup, conversation, title, ("photo", "Photo d’ordonnance".into(), None), reply).await?;

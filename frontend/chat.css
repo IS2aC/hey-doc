@@ -124,3 +124,15 @@ svg { width: 20px; height: 20px; flex: none; }
   .suggestions button { min-height: 0; }
 }
 @media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
+
+/* Fourchette de prix */
+.rx-card header > div { display: grid; gap: 2px; }
+.rx-kicker { color: #b9d6e8; font-size: .8rem; font-weight: 700; }
+.rx-total { font-size: 1.35rem; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.rx-price { margin-top: 6px; color: var(--action-hover); font-size: 1.15rem; font-weight: 850; font-variant-numeric: tabular-nums; }
+.rx-posology { font-style: italic; }
+.brands { margin-top: 8px; }
+.brands summary { width: fit-content; min-height: 32px; padding: 4px 0; color: var(--action); font-size: .9rem; font-weight: 750; cursor: pointer; }
+.brands summary:hover { text-decoration: underline; text-underline-offset: 3px; }
+.brands .candidates { margin-top: 4px; }
+.candidates li small b { color: var(--ink); font-variant-numeric: tabular-nums; }

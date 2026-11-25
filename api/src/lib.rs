@@ -6,6 +6,7 @@ mod duty;
 mod estimates;
 pub mod llm;
 mod prescriptions;
+mod pricing;
 pub mod reducto;
 mod accounts;
 

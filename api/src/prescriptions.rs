@@ -47,7 +47,7 @@ pub enum LineStatus {
 #[derive(Serialize, ToSchema)]
 pub struct Candidate {
     #[serde(flatten)]
-    presentation: Presentation,
+    pub(crate) presentation: Presentation,
     /// Score de 0 à 1 environ : proximité du libellé, corrigée par les dosages.
     score: f64,
 }
@@ -55,18 +55,21 @@ pub struct Candidate {
 #[derive(Serialize, ToSchema)]
 pub struct PrescriptionLine {
     /// Texte de la ligne tel que lu, sans la posologie.
-    text: String,
+    pub(crate) text: String,
     /// Posologie lue sur la ligne ou les lignes suivantes. Information seulement.
-    instructions: Vec<String>,
+    pub(crate) instructions: Vec<String>,
     /// Nombre de boîtes, seulement s’il est écrit (N°2, x2, 2 boîtes…).
-    quantity: Option<i32>,
+    pub(crate) quantity: Option<i32>,
     /// Nombre d’unités à délivrer, s’il est écrit (« #21 » : 21 comprimés). Sert à proposer
     /// un nombre de boîtes selon le conditionnement choisi.
-    units: Option<i32>,
+    pub(crate) units: Option<i32>,
     /// Le lecteur signale une lecture incertaine.
-    low_confidence: bool,
-    status: LineStatus,
-    candidates: Vec<Candidate>,
+    pub(crate) low_confidence: bool,
+    pub(crate) status: LineStatus,
+    pub(crate) candidates: Vec<Candidate>,
+    /// Fourchette de prix des présentations équivalentes. Renseignée dans le chat.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) price: Option<crate::pricing::PriceRange>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -81,7 +84,7 @@ pub struct ReadResponse {
     status: ReadStatus,
     /// Message à afficher quand la photo est inexploitable.
     message: Option<String>,
-    lines: Vec<PrescriptionLine>,
+    pub(crate) lines: Vec<PrescriptionLine>,
     /// Lignes écartées : en-tête, médecin, patient, dates, signatures.
     ignored_lines: usize,
     reader: Option<ReaderInfo>,
@@ -90,6 +93,9 @@ pub struct ReadResponse {
     /// restent lisibles dans l’image archivée.
     #[schema(value_type = Option<String>, format = Uuid)]
     archive_id: Option<Uuid>,
+    /// Fourchette de l’ordonnance entière. Renseignée dans le chat.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) estimate: Option<crate::pricing::Estimate>,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -141,6 +147,7 @@ pub async fn read(State(state): State<AppState>, multipart: Multipart) -> Result
             ignored_lines: 0,
             reader: Some(info),
             archive_id: None,
+            estimate: None,
         }));
     }
     let raw = lines_from_blocks(&transcript.blocks);
@@ -179,6 +186,7 @@ pub(crate) async fn read_image(reader: &dyn crate::reducto::PrescriptionReader, 
             ignored_lines: 0,
             reader: Some(info),
             archive_id: None,
+            estimate: None,
         });
     }
     let (mut response, _) = match_lines(pool, lines_from_blocks(&transcript.blocks)).await?;
@@ -210,12 +218,21 @@ impl ReadResponse {
         if self.lines.is_empty() {
             return "Je n’ai reconnu aucun médicament. Tapez les noms et dosages, une ligne par médicament.".into();
         }
-        let mut out = format!("J’ai relevé {} ligne{} :", self.lines.len(), if self.lines.len() > 1 { "s" } else { "" });
+        let n = self.lines.len();
+        let mut out = match &self.estimate {
+            Some(e) => format!(
+                "J’ai relevé {n} ligne{}. Estimation : {}, selon les marques disponibles.",
+                if n > 1 { "s" } else { "" },
+                crate::pricing::fcfa(e.min_fcfa(), e.max_fcfa())
+            ),
+            None => format!("J’ai relevé {n} ligne{} :", if n > 1 { "s" } else { "" }),
+        };
         for l in &self.lines {
             let best = l.candidates.first().map(|c| c.presentation.label.as_str());
-            let detail = match (l.status, best) {
-                (LineStatus::Matched, Some(b)) => format!("correspond à {b}"),
-                (LineStatus::Ambiguous, Some(_)) => format!("{} présentations possibles, à choisir", l.candidates.len()),
+            let detail = match (&l.price, l.status, best) {
+                (Some(p), _, _) => p.describe(),
+                (None, LineStatus::Matched, Some(b)) => format!("correspond à {b}, prix non publié"),
+                (None, LineStatus::Ambiguous, Some(_)) => format!("{} présentations possibles, prix non publié", l.candidates.len()),
                 _ => "introuvable dans le catalogue, à confirmer en pharmacie".into(),
             };
             out.push_str(&format!("\n- {} : {detail}", l.text));
@@ -358,7 +375,14 @@ pub(crate) fn strip_markup(s: &str) -> String {
 
 /// Removes list markers ("1.", "2)", "-", "•", "*", "#") and extra spaces.
 pub(crate) fn clean_line(line: &str) -> String {
-    let mut s = line.trim().trim_start_matches(['-', '*', '•', '#', '>', '·']).trim_start();
+    let mut s = line.trim();
+    // "#21" is a number of units, not a list marker.
+    while let Some(rest) = s.strip_prefix(['-', '*', '•', '#', '>', '·']) {
+        if s.starts_with('#') && rest.starts_with(|c: char| c.is_ascii_digit()) {
+            break;
+        }
+        s = rest.trim_start();
+    }
     let digits = s.chars().take_while(|c| c.is_ascii_digit()).count();
     if digits > 0 && digits <= 2 && s[digits..].starts_with(['.', ')', '/']) && !s[digits..].starts_with("./") {
         let rest = &s[digits + 1..];
@@ -507,7 +531,7 @@ const FORM_WORDS: &[&str] = &[
 ];
 
 /// The form written on the prescription, as stored in `dosage_form`.
-fn written_form(q: &str) -> Option<&'static str> {
+pub(crate) fn written_form(q: &str) -> Option<&'static str> {
     q.split(|c: char| !c.is_alphanumeric()).find_map(|w| match w {
         "cp" | "comp" | "cpr" | "comprime" | "comprimes" | "tab" | "tabs" | "tablet" | "tablets" => Some("comprim"),
         "gel" | "gelule" | "gelules" | "cap" | "caps" | "capsule" | "capsules" => Some("gélule"),
@@ -672,6 +696,17 @@ async fn match_lines(pool: &PgPool, raw: Vec<RawLine>) -> Result<(ReadResponse, 
     let mut ignored = 0;
     for (index, raw) in raw.into_iter().enumerate() {
         let folded = fold(&raw.text);
+        // A line holding only a quantity ("#21", "N°2") belongs to the medicine above it.
+        let (rest, units) = take_units(&folded);
+        let (rest, quantity) = take_quantity(&rest);
+        if rest.trim().is_empty() && (units.is_some() || quantity.is_some()) {
+            if let Some(prev) = drafts.last_mut() {
+                prev.units = prev.units.or(units);
+                prev.quantity = prev.quantity.or(quantity);
+                prev.product_lines.push(index);
+                continue;
+            }
+        }
         if is_header(&folded) {
             ignored += 1;
             continue;
@@ -740,9 +775,10 @@ async fn match_lines(pool: &PgPool, raw: Vec<RawLine>) -> Result<(ReadResponse, 
             low_confidence: d.low_confidence,
             status,
             candidates: if status == LineStatus::NoMatch { vec![] } else { candidates },
+            price: None,
         });
     }
-    let response = ReadResponse { status: ReadStatus::Read, message: None, lines, ignored_lines: ignored, reader: None, archive_id: None };
+    let response = ReadResponse { status: ReadStatus::Read, message: None, lines, ignored_lines: ignored, reader: None, archive_id: None, estimate: None };
     Ok((response, classified))
 }
 

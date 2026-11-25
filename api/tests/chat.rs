@@ -171,3 +171,44 @@ async fn the_chat_needs_a_session_and_stores_nothing_on_failure(pool: PgPool) {
     let n: i64 = sqlx::query_scalar("SELECT count(*) FROM conversations").fetch_one(&pool).await.unwrap();
     assert_eq!(n, 0);
 }
+
+const PRICED: &str = r#"
+INSERT INTO presentations (id, label, ingredient, strength, dosage_form, pack) OVERRIDING SYSTEM VALUE VALUES
+  (10, 'AMOCLAN FORTE CP 500 MG/125 MG B/15', 'AMOXICILLINE+ACIDE CLAVULANIQUE', '500MG/125MG', 'Comprimé', 'B/15'),
+  (11, 'TICASSE CP 500 MG/125 MG B/15', 'AMOXICILLINE + ACIDE CLAVULANIQUE', '500MG/125MG', 'Comprimé', 'B/15'),
+  (12, 'TRYDROX CV CP PELL 500MG/125MG B/10', 'AMOXICILLINE + ACIDE CLAVULANIQUE', '500MG/125MG', 'Comprimé', 'B/10'),
+  (13, 'CO-AMOXICLAV SP ENFANT PDRE POUR SUSP BUVABLE 500MG/125MG B/12', 'AMOXICILLINE + ACIDE CLAVULANIQUE', '500MG/125MG', 'Suspension', 'B/12'),
+  (14, 'ACECLAV 1G CP B/12', 'AMOXICILLINE + ACIDE CLAVULANIQUE', '1G/125MG', 'Comprimé', 'B/12');
+INSERT INTO sources (id, publisher, reference, published_on) OVERRIDING SYSTEM VALUE VALUES (1, 'MUGEF-CI', 'liste-2026-09', '2026-09-08');
+INSERT INTO prices (presentation_id, source_id, kind, amount_fcfa, observed_on) VALUES
+  (10, 1, 'mugefci_published', 5955, '2026-09-08'),
+  (10, 1, 'mugefci_published', 9999, '2024-12-18'),
+  (11, 1, 'mugefci_published', 5070, '2026-09-08'),
+  (12, 1, 'mugefci_published', 5250, '2026-09-08'),
+  (13, 1, 'mugefci_published', 1000, '2026-09-08'),
+  (14, 1, 'mugefci_published', 900, '2026-09-08');
+"#;
+
+#[sqlx::test(migrator = "hey_doc_api::MIGRATOR")]
+async fn a_prescription_gets_a_price_range_over_equivalent_brands(pool: PgPool) {
+    sqlx::raw_sql(PRICED).execute(&pool).await.unwrap();
+    let app = app(pool, None, false).await;
+    let awa = sign_up(&app, "Awa", "+225 07 01 02 03 04").await;
+    let (s, v) = call(&app, "POST", "/v1/chat/messages", Some(json!({ "text": "Amoclan forte 500/125 mg cp\n#21\nSig. Take one with food" })), &awa).await;
+    assert_eq!(s, StatusCode::CREATED, "{v}");
+    let price = &v["messages"][1]["data"]["lines"][0]["price"];
+    assert_eq!(price["basis"], "units", "{price}");
+    // 21 tablets: 2 boxes of 15 or 3 boxes of 10. The suspension and the 1 g tablet are not equivalent.
+    assert_eq!(price["count"], 3, "{price}");
+    assert_eq!(price["min_fcfa"], "10140.00", "TICASSE, 2 boxes");
+    assert_eq!(price["max_fcfa"], "15750.00", "TRYDROX, 3 boxes");
+    assert_eq!(price["options"][1]["label"], "AMOCLAN FORTE CP 500 MG/125 MG B/15");
+    assert_eq!(price["options"][1]["box_price_fcfa"], "5955.00", "latest published price");
+    assert_eq!(price["published_on"], "2026-09-08");
+    let estimate = &v["messages"][1]["data"]["estimate"];
+    assert_eq!(estimate["priced_lines"], 1);
+    assert_eq!(estimate["source"], "mugefci_published");
+    let content = v["messages"][1]["content"].as_str().unwrap();
+    assert!(content.contains("10\u{202f}140 à 15\u{202f}750 FCFA"), "{content}");
+}
+
