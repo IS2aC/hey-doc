@@ -53,7 +53,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cors = tower_http::cors::CorsLayer::new()
         .allow_origin(origins)
         .allow_methods([axum::http::Method::GET, axum::http::Method::POST])
-        .allow_headers([axum::http::header::CONTENT_TYPE]);
+        .allow_headers([axum::http::header::CONTENT_TYPE])
+        // Le cookie de session accompagne les appels de la page.
+        .allow_credentials(true);
     axum::serve(listener, hey_doc_api::router_with(state).layer(cors))
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;

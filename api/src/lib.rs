@@ -6,7 +6,7 @@ mod estimates;
 pub mod llm;
 mod prescriptions;
 pub mod reducto;
-mod signups;
+mod accounts;
 
 use std::sync::Arc;
 
@@ -46,7 +46,10 @@ pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../database/migra
         corpus::reducto_text,
         corpus::similar_products,
         corpus::llm_structure,
-        signups::create
+        accounts::register,
+        accounts::login,
+        accounts::logout,
+        accounts::me
     )
 )]
 pub struct ApiDoc;
@@ -97,7 +100,10 @@ pub fn router_with(state: AppState) -> Router {
         )
         .route("/v1/test/similar-products", post(corpus::similar_products))
         .route("/v1/test/llm-structure", post(corpus::llm_structure))
-        .route("/v1/signups", post(signups::create))
+        .route("/v1/auth/register", post(accounts::register))
+        .route("/v1/auth/login", post(accounts::login))
+        .route("/v1/auth/logout", post(accounts::logout))
+        .route("/v1/auth/me", get(accounts::me))
         .with_state(state)
         .merge(SwaggerUi::new("/docs").url("/docs/openapi.json", ApiDoc::openapi()))
 }
@@ -120,6 +126,10 @@ pub enum ApiError {
     Unavailable(&'static str, String),
     /// A dependency answered with an error (502).
     Upstream(&'static str, String),
+    /// Not signed in, or wrong credentials (401).
+    Unauthorized(&'static str, String),
+    /// The resource already exists (409).
+    Conflict(&'static str, String),
     Db(sqlx::Error),
 }
 
@@ -163,6 +173,8 @@ impl IntoResponse for ApiError {
             }
             ApiError::Unavailable(code, msg) => (StatusCode::SERVICE_UNAVAILABLE, code, msg),
             ApiError::Upstream(code, msg) => (StatusCode::BAD_GATEWAY, code, msg),
+            ApiError::Unauthorized(code, msg) => (StatusCode::UNAUTHORIZED, code, msg),
+            ApiError::Conflict(code, msg) => (StatusCode::CONFLICT, code, msg),
             ApiError::Db(e) => {
                 tracing::error!(error = %e, "database error");
                 (

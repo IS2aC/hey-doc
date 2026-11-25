@@ -173,18 +173,23 @@ Même traitement pour une ordonnance saisie au clavier, une ligne par médicamen
 { "text": "Doliprane 1000 mg N°2\n1 cp 3 fois par jour\nAmoxicilline 500 mg x1" }
 ```
 
-### `POST /v1/signups`
+### Comptes : `POST /v1/auth/register`, `POST /v1/auth/login`, `POST /v1/auth/logout`, `GET /v1/auth/me`
 
-Inscription au chat depuis la landing page. Prénom, nom et ville font 1 à 80 caractères. `country` est un code ISO à deux lettres. `whatsapp` est un numéro international, normalisé au format E.164. `email` est facultatif. `consent` doit valoir `true`.
+Un compte s’identifie par son numéro WhatsApp. `register` reçoit prénom, nom, ville (1 à 80 caractères), `country` (code ISO à deux lettres), `whatsapp` (numéro international, normalisé au format E.164), `email` facultatif, `password` (8 à 128 caractères) et `consent`, qui doit valoir `true`.
 
 ```json
 { "first_name": "Awa", "last_name": "Koné", "country": "CI", "city": "Abidjan",
-  "whatsapp": "+225 07 01 02 03 04", "email": null, "consent": true }
+  "whatsapp": "+225 07 01 02 03 04", "email": null, "password": "un mot de passe long", "consent": true }
 ```
 
-La réponse est toujours `201 {"status": "registered"}`, que le numéro soit nouveau ou déjà inscrit : le formulaire ne révèle pas qui s’est inscrit. Une nouvelle inscription avec le même numéro met à jour la ligne de `signups`. Un champ caché `website`, rempli seulement par les robots, fait ignorer la demande sans erreur.
+- `register` crée le compte et ouvre une session : 201 avec le compte. Un numéro qui a déjà un compte répond 409 `account_exists`. Une personne inscrite avant les comptes, sans mot de passe, complète son inscription.
+- `login` reçoit `{"whatsapp", "password"}` et répond 200 avec le compte. Un numéro inconnu et un mauvais mot de passe donnent la même réponse 401 `invalid_credentials`, dans le même délai.
+- `logout` ferme la session et efface le cookie : 204.
+- `me` renvoie le compte de la session, ou 401 `not_authenticated`.
 
-Les pages web servies sur une autre origine peuvent appeler l’API. `HEYDOC_WEB_ORIGINS` liste ces origines, séparées par des virgules. Par défaut : `http://127.0.0.1:5173,http://localhost:5173`.
+Les mots de passe sont hachés avec Argon2id. La session est un jeton aléatoire de 256 bits dans le cookie `heydoc_session` (HttpOnly, SameSite=Lax, 30 jours). La table `sessions` n’en garde que le SHA-256. En production, `HEYDOC_COOKIE_SECURE=1` ajoute l’attribut `Secure`. Un champ caché `website`, rempli seulement par les robots, fait ignorer la création sans erreur. La connexion n’a pas encore de limite de tentatives.
+
+Les pages web servies sur une autre origine peuvent appeler l’API, avec le cookie de session. `HEYDOC_WEB_ORIGINS` liste ces origines, séparées par des virgules. Par défaut : `http://127.0.0.1:5173,http://localhost:5173`.
 
 ### Routes de test
 
