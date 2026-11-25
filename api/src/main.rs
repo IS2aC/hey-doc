@@ -44,7 +44,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None => tracing::warn!("LLM_MODEL absent : la structuration par modèle de langage répondra 503"),
     }
     let state = hey_doc_api::AppState { pool, reader, archive, llm };
-    axum::serve(listener, hey_doc_api::router_with(state))
+    // Les pages web servies ailleurs (landing en local sur le port 5173 par défaut) peuvent appeler l’API.
+    let origins: Vec<axum::http::HeaderValue> = std::env::var("HEYDOC_WEB_ORIGINS")
+        .unwrap_or_else(|_| "http://127.0.0.1:5173,http://localhost:5173".into())
+        .split(',')
+        .filter_map(|o| o.trim().parse().ok())
+        .collect();
+    let cors = tower_http::cors::CorsLayer::new()
+        .allow_origin(origins)
+        .allow_methods([axum::http::Method::GET, axum::http::Method::POST])
+        .allow_headers([axum::http::header::CONTENT_TYPE]);
+    axum::serve(listener, hey_doc_api::router_with(state).layer(cors))
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })

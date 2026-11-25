@@ -392,3 +392,56 @@ section[id] { scroll-margin-top: 100px; }
 }
 /* Le magnétisme de ScrollTrigger se dérègle avec un scroll lissé par le navigateur. */
 html.cine { scroll-behavior: auto; }
+
+/* Inscription au chat */
+.signup-section { padding-block: clamp(48px, 8vw, 104px); background: linear-gradient(180deg, #fff, #effaf6); border-top: 1px solid #e9efec; }
+.signup { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); align-items: start; gap: clamp(28px, 6vw, 72px); }
+.signup-copy h2 em { font-style: normal; color: var(--action); }
+.signup-copy > p:not(.eyebrow) { max-width: 40ch; margin-top: 16px; color: var(--muted); font-size: 1.08rem; }
+.signup-card { padding: clamp(20px, 3.4vw, 34px); background: white; border: 1px solid #e1e9e6; border-radius: 24px; box-shadow: var(--shadow); }
+.signup-form { display: grid; gap: 16px; }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.field { display: grid; align-content: start; gap: 6px; min-width: 0; font-size: .92rem; font-weight: 750; }
+.field input, .field select, .phone-input {
+  width: 100%;
+  min-height: 48px;
+  box-sizing: border-box;
+  padding: 10px 13px;
+  border: 1px solid #c9d8d2;
+  border-radius: 10px;
+  background: white;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 500;
+}
+.field select { appearance: none; padding-right: 36px; background: white url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") right 10px center / 18px no-repeat; }
+.field input:focus-visible, .field select:focus-visible, .phone-input:focus-within, .consent input:focus-visible { outline: 3px solid #00b89466; outline-offset: 1px; border-color: var(--action); }
+.phone-input { display: flex; align-items: center; gap: 10px; padding-block: 0; }
+.phone-input input { min-height: 46px; padding: 0; border: 0; outline: 0; }
+.phone-input:focus-within input { outline: 0; }
+.dial { padding-right: 10px; border-right: 1px solid var(--line); color: var(--muted); font-variant-numeric: tabular-nums; }
+.optional, .field-hint { color: var(--muted); font-weight: 500; }
+.optional { font-size: .82rem; }
+.field-hint { font-size: .82rem; }
+.field-error { color: var(--error-ink); font-size: .84rem; font-weight: 650; }
+.field [aria-invalid="true"], .phone-input:has([aria-invalid="true"]) { border-color: var(--error); background-color: var(--error-bg); }
+.phone-input [aria-invalid="true"] { background: transparent; }
+.honeypot { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+.consent { display: flex; align-items: flex-start; gap: 10px; color: var(--muted); font-size: .9rem; cursor: pointer; }
+.consent input { flex: none; width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--action); }
+.signup-submit { width: 100%; min-height: 52px; font-size: 1rem; }
+.signup-submit[aria-busy="true"] { opacity: .7; cursor: progress; }
+.form-status:empty { display: none; }
+.form-status { padding: 10px 12px; border-radius: 8px; background: var(--error-bg); color: var(--error-ink); font-size: .9rem; font-weight: 650; }
+.signup-done { display: grid; justify-items: start; gap: 12px; padding-block: 12px; outline: 0; }
+.signup-done h3 { font-size: clamp(1.5rem, 3vw, 2rem); letter-spacing: -.04em; }
+.signup-done p { color: var(--muted); max-width: 40ch; }
+.signup-done strong { color: var(--ink); white-space: nowrap; }
+.done-icon { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; background: var(--mint); color: var(--action); }
+.done-icon svg { width: 26px; height: 26px; }
+@media (max-width: 900px) {
+  .signup { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  .field-row { grid-template-columns: minmax(0, 1fr); }
+}

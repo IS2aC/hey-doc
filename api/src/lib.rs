@@ -6,6 +6,7 @@ mod estimates;
 pub mod llm;
 mod prescriptions;
 pub mod reducto;
+mod signups;
 
 use std::sync::Arc;
 
@@ -44,7 +45,8 @@ pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../database/migra
         prescriptions::match_text,
         corpus::reducto_text,
         corpus::similar_products,
-        corpus::llm_structure
+        corpus::llm_structure,
+        signups::create
     )
 )]
 pub struct ApiDoc;
@@ -95,6 +97,7 @@ pub fn router_with(state: AppState) -> Router {
         )
         .route("/v1/test/similar-products", post(corpus::similar_products))
         .route("/v1/test/llm-structure", post(corpus::llm_structure))
+        .route("/v1/signups", post(signups::create))
         .with_state(state)
         .merge(SwaggerUi::new("/docs").url("/docs/openapi.json", ApiDoc::openapi()))
 }

@@ -173,6 +173,19 @@ Même traitement pour une ordonnance saisie au clavier, une ligne par médicamen
 { "text": "Doliprane 1000 mg N°2\n1 cp 3 fois par jour\nAmoxicilline 500 mg x1" }
 ```
 
+### `POST /v1/signups`
+
+Inscription au chat depuis la landing page. Prénom, nom et ville font 1 à 80 caractères. `country` est un code ISO à deux lettres. `whatsapp` est un numéro international, normalisé au format E.164. `email` est facultatif. `consent` doit valoir `true`.
+
+```json
+{ "first_name": "Awa", "last_name": "Koné", "country": "CI", "city": "Abidjan",
+  "whatsapp": "+225 07 01 02 03 04", "email": null, "consent": true }
+```
+
+La réponse est toujours `201 {"status": "registered"}`, que le numéro soit nouveau ou déjà inscrit : le formulaire ne révèle pas qui s’est inscrit. Une nouvelle inscription avec le même numéro met à jour la ligne de `signups`. Un champ caché `website`, rempli seulement par les robots, fait ignorer la demande sans erreur.
+
+Les pages web servies sur une autre origine peuvent appeler l’API. `HEYDOC_WEB_ORIGINS` liste ces origines, séparées par des virgules. Par défaut : `http://127.0.0.1:5173,http://localhost:5173`.
+
 ### Routes de test
 
 Elles servent à explorer les ordonnances comme du texte. Elles ne rapprochent rien et n’archivent rien.
