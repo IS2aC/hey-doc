@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="fr-CI">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
+  <title>Chat · Hey-Doc</title>
+  <link rel="icon" href="../branding/heydoc-mascotte.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../branding/theme.css">
+  <link rel="stylesheet" href="chat.css">
+  <meta name="heydoc-api" content="http://127.0.0.1:8080">
+  <script src="chat.js" defer></script>
+</head>
+<body>
+  <div class="app" data-state="loading">
+    <aside class="sidebar" id="sidebar" aria-label="Conversations">
+      <div class="side-top">
+        <a class="wordmark" href="index.html"><img src="../branding/heydoc-mascotte.svg" width="34" height="34" alt=""><span>Hey-Doc</span></a>
+        <button type="button" class="icon-button close-sidebar" aria-label="Fermer le menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <button type="button" class="new-chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        Nouvelle conversation
+      </button>
+      <nav class="history">
+        <p class="history-label">Récentes</p>
+        <ul class="history-list"></ul>
+        <p class="history-empty" hidden>Vos conversations apparaîtront ici.</p>
+      </nav>
+      <div class="side-account">
+        <span class="avatar" aria-hidden="true"></span>
+        <div class="account-text"><strong class="account-name"></strong><small class="account-number"></small></div>
+        <button type="button" class="icon-button logout" aria-label="Se déconnecter" title="Se déconnecter">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l-4-4 4-4M6 12h10"/></svg>
+        </button>
+      </div>
+    </aside>
+    <div class="scrim" hidden></div>
+
+    <main class="chat">
+      <header class="chat-top">
+        <button type="button" class="icon-button open-sidebar" aria-label="Ouvrir le menu" aria-controls="sidebar" aria-expanded="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+        </button>
+        <h1 class="chat-title">Nouvelle conversation</h1>
+        <button type="button" class="icon-button new-chat-top" aria-label="Nouvelle conversation">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </header>
+
+      <div class="thread" tabindex="-1">
+        <section class="welcome" aria-labelledby="welcome-title">
+          <img src="../branding/heydoc-mascotte.svg" width="76" height="76" alt="">
+          <h2 id="welcome-title">Bonjour<span class="welcome-name"></span>, que puis-je faire pour vous&nbsp;?</h2>
+          <div class="suggestions">
+            <button type="button" data-action="photo"><strong>Estimer mon ordonnance</strong><span>Envoyez une photo, je relève les médicaments</span></button>
+            <button type="button" data-prompt="Doliprane 1000 mg N°2"><strong>Taper un médicament</strong><span>Par exemple «&nbsp;Doliprane 1000 mg N°2&nbsp;»</span></button>
+            <button type="button" data-prompt="Comment trouver une pharmacie de garde ce soir&nbsp;?"><strong>Pharmacie de garde</strong><span>Trouver une officine ouverte ce soir</span></button>
+            <button type="button" data-prompt="Comment lire le sous-total d’une estimation&nbsp;?"><strong>Comprendre une estimation</strong><span>Sous-total, présentation, prix comptant</span></button>
+          </div>
+        </section>
+        <ol class="messages" aria-live="polite" aria-relevant="additions"></ol>
+      </div>
+
+      <form class="composer" novalidate>
+        <div class="composer-box">
+          <button type="button" class="icon-button attach" aria-label="Envoyer une photo d’ordonnance" title="Photo d’ordonnance">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/><circle cx="12" cy="12.5" r="3.5"/></svg>
+          </button>
+          <input class="file" type="file" accept="image/jpeg,image/png,image/heic,image/heif" hidden>
+          <label class="visually-hidden" for="message">Votre message</label>
+          <textarea id="message" rows="1" maxlength="4000" placeholder="Écrivez à Hey-Doc ou envoyez une photo d’ordonnance" autocomplete="off"></textarea>
+          <button type="submit" class="send" aria-label="Envoyer" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </button>
+        </div>
+        <p class="disclaimer">Hey-Doc peut se tromper. Votre pharmacien confirme le produit et le dosage. En cas d’urgence, appelez le <strong>185</strong>.</p>
+      </form>
+    </main>
+  </div>
+</body>
+</html>

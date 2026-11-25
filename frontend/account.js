@@ -3,7 +3,16 @@
 (() => {
   const section = document.querySelector('#inscription');
   if (!section) return;
-  const api = document.querySelector('meta[name="heydoc-api"]')?.content ?? '';
+  // L’API doit être appelée sur le même nom d’hôte que la page (localhost ou 127.0.0.1) :
+  // sinon le navigateur n’envoie pas le cookie de session.
+  const api = (() => {
+    const meta = document.querySelector('meta[name="heydoc-api"]')?.content;
+    if (!meta) return '';
+    const url = new URL(meta, location.href);
+    const loopback = ['localhost', '127.0.0.1', '[::1]'];
+    if (loopback.includes(url.hostname) && loopback.includes(location.hostname)) url.hostname = location.hostname;
+    return url.origin;
+  })();
   const forms = { register: section.querySelector('#register-form'), login: section.querySelector('#login-form') };
   const tabs = section.querySelector('.auth-tabs');
   const done = section.querySelector('.signup-done');
@@ -129,7 +138,10 @@
     done.querySelector('.done-name').textContent = ` ${account.first_name}`;
     done.querySelector('.done-number').textContent = pretty(account.whatsapp);
     done.hidden = false;
-    if (headerButton) headerButton.textContent = `Bonjour, ${account.first_name}`;
+    if (headerButton) {
+      headerButton.textContent = 'Ouvrir le chat';
+      headerButton.href = 'chat.html';
+    }
     if (focus) done.focus();
   }
 
@@ -137,7 +149,10 @@
     done.hidden = true;
     tabs.hidden = false;
     show('login');
-    if (headerButton) headerButton.textContent = 'Accéder au chat';
+    if (headerButton) {
+      headerButton.textContent = 'Accéder au chat';
+      headerButton.href = '#inscription';
+    }
   }
 
   for (const form of Object.values(forms)) {
@@ -165,7 +180,9 @@
         const res = await call(form.dataset.endpoint, { method: 'POST', body: JSON.stringify(body) });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
-          signedIn(data, true);
+          // Connecté : direction l’espace de chat.
+          location.href = 'chat.html';
+          return;
         } else if (res.status === 409) {
           // Le numéro a déjà un compte : on bascule sur la connexion avec le numéro déjà rempli.
           show('login');
@@ -202,9 +219,19 @@
   });
 
   // Une session déjà ouverte affiche directement le compte.
+  // Session déjà ouverte : les accès au compte mènent au chat, et qui arrive sur la connexion
+  // y est envoyé directement.
   call('/v1/auth/me')
     .then(res => (res.ok ? res.json() : null))
-    .then(account => account && signedIn(account, false))
+    .then(account => {
+      if (!account) return;
+      if (location.hash === '#inscription') {
+        location.replace('chat.html');
+        return;
+      }
+      signedIn(account, false);
+      for (const link of document.querySelectorAll('a[href="#inscription"]')) link.href = 'chat.html';
+    })
     .catch(() => {});
 })();
 

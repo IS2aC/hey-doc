@@ -52,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect();
     let cors = tower_http::cors::CorsLayer::new()
         .allow_origin(origins)
-        .allow_methods([axum::http::Method::GET, axum::http::Method::POST])
+        .allow_methods([axum::http::Method::GET, axum::http::Method::POST, axum::http::Method::DELETE])
         .allow_headers([axum::http::header::CONTENT_TYPE])
         // Le cookie de session accompagne les appels de la page.
         .allow_credentials(true);

@@ -1,5 +1,6 @@
 pub mod archive;
 mod catalog;
+mod chat;
 mod corpus;
 mod duty;
 mod estimates;
@@ -49,7 +50,12 @@ pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../database/migra
         accounts::register,
         accounts::login,
         accounts::logout,
-        accounts::me
+        accounts::me,
+        chat::send,
+        chat::photo,
+        chat::list,
+        chat::get,
+        chat::delete
     )
 )]
 pub struct ApiDoc;
@@ -104,6 +110,13 @@ pub fn router_with(state: AppState) -> Router {
         .route("/v1/auth/login", post(accounts::login))
         .route("/v1/auth/logout", post(accounts::logout))
         .route("/v1/auth/me", get(accounts::me))
+        .route("/v1/chat/messages", post(chat::send))
+        .route(
+            "/v1/chat/photo",
+            post(chat::photo).layer(DefaultBodyLimit::max(prescriptions::MAX_IMAGE_BYTES + 64 * 1024)),
+        )
+        .route("/v1/chat/conversations", get(chat::list))
+        .route("/v1/chat/conversations/{id}", get(chat::get).delete(chat::delete))
         .with_state(state)
         .merge(SwaggerUi::new("/docs").url("/docs/openapi.json", ApiDoc::openapi()))
 }

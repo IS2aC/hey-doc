@@ -166,6 +166,64 @@ pub async fn read(State(state): State<AppState>, multipart: Multipart) -> Result
     Ok(Json(response))
 }
 
+/// Reads a photo for the chat: same treatment as `read`, never archived.
+pub(crate) async fn read_image(reader: &dyn crate::reducto::PrescriptionReader, pool: &PgPool, image: Image) -> Result<ReadResponse, ApiError> {
+    let transcript = reader.read(image).await.map_err(reader_error)?;
+    let info = ReaderInfo { provider: transcript.provider, model: transcript.model.clone(), pages: transcript.pages };
+    let letters: usize = transcript.blocks.iter().map(|b| b.content.chars().filter(|c| c.is_alphabetic()).count()).sum();
+    if letters < 15 {
+        return Ok(ReadResponse {
+            status: ReadStatus::Unreadable,
+            message: Some("Photo illisible. Reprenez-la à plat, bien éclairée et nette, ou tapez les médicaments.".into()),
+            lines: vec![],
+            ignored_lines: 0,
+            reader: Some(info),
+            archive_id: None,
+        });
+    }
+    let (mut response, _) = match_lines(pool, lines_from_blocks(&transcript.blocks)).await?;
+    response.reader = Some(info);
+    Ok(response)
+}
+
+/// Lines typed in the chat, matched like a typed prescription.
+pub(crate) async fn match_typed(pool: &PgPool, text: &str) -> Result<ReadResponse, ApiError> {
+    let raw = text.lines().map(|l| RawLine { text: clean_line(l), low_confidence: false, block: None }).collect();
+    Ok(match_lines(pool, raw).await?.0)
+}
+
+/// A typed message names a medicine when one of its lines carries a strength ("Doliprane 1000 mg").
+pub(crate) fn looks_like_prescription(text: &str) -> bool {
+    text.lines().any(|l| !strengths(&fold(l), false).is_empty())
+}
+
+impl ReadResponse {
+    pub(crate) fn line_count(&self) -> usize {
+        self.lines.len()
+    }
+
+    /// What the chat says and remembers about a reading, in plain French.
+    pub(crate) fn summary(&self) -> String {
+        if let Some(m) = &self.message {
+            return m.clone();
+        }
+        if self.lines.is_empty() {
+            return "Je n’ai reconnu aucun médicament. Tapez les noms et dosages, une ligne par médicament.".into();
+        }
+        let mut out = format!("J’ai relevé {} ligne{} :", self.lines.len(), if self.lines.len() > 1 { "s" } else { "" });
+        for l in &self.lines {
+            let best = l.candidates.first().map(|c| c.presentation.label.as_str());
+            let detail = match (l.status, best) {
+                (LineStatus::Matched, Some(b)) => format!("correspond à {b}"),
+                (LineStatus::Ambiguous, Some(_)) => format!("{} présentations possibles, à choisir", l.candidates.len()),
+                _ => "introuvable dans le catalogue, à confirmer en pharmacie".into(),
+            };
+            out.push_str(&format!("\n- {} : {detail}", l.text));
+        }
+        out
+    }
+}
+
 /// Lire une ordonnance saisie au clavier.
 ///
 /// Même traitement que pour une photo, sans le lecteur : une ligne par médicament.

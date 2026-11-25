@@ -256,7 +256,7 @@ section[id] { scroll-margin-top: 100px; }
 .rx {
   position: absolute;
   inset: 1.4em 1.6em auto;
-  padding: 1.4em 1.3em 1.8em;
+  padding: 1.4em 1.3em 3em;
   overflow: hidden;
   background: white;
   border-radius: .8em;
@@ -264,7 +264,7 @@ section[id] { scroll-margin-top: 100px; }
   opacity: 0;
   visibility: hidden;
 }
-.rx i { display: block; height: .5em; margin-top: 1em; border-radius: 1em; background: #cee3dd; }
+.rx i { display: block; height: .5em; margin-top: 1.25em; border-radius: 1em; background: #cee3dd; }
 .rx i:nth-child(odd) { width: 72%; }
 .rx-scan {
   position: absolute;

@@ -189,6 +189,16 @@ Un compte s’identifie par son numéro WhatsApp. `register` reçoit prénom, no
 
 Les mots de passe sont hachés avec Argon2id. La session est un jeton aléatoire de 256 bits dans le cookie `heydoc_session` (HttpOnly, SameSite=Lax, 30 jours). La table `sessions` n’en garde que le SHA-256. En production, `HEYDOC_COOKIE_SECURE=1` ajoute l’attribut `Secure`. Un champ caché `website`, rempli seulement par les robots, fait ignorer la création sans erreur. La connexion n’a pas encore de limite de tentatives.
 
+### Chat : `POST /v1/chat/messages`, `POST /v1/chat/photo`, `GET /v1/chat/conversations`, `GET` et `DELETE /v1/chat/conversations/{id}`
+
+Réservé aux comptes connectés (cookie de session), 401 sinon. Chaque compte ne voit que ses conversations : celles d’un autre répondent 404.
+
+- `messages` reçoit `{"conversation_id": null, "text": "…"}` (1 à 4 000 caractères) et répond 201 avec la conversation et les deux messages : celui envoyé et la réponse de Hey-Doc. Sans `conversation_id`, une conversation est créée, titrée par le début du message.
+- Un message qui nomme un médicament avec son dosage (« Doliprane 1000 mg N°2 ») est rapproché du catalogue comme `POST /v1/prescriptions/match`, sans modèle : réponse de type `prescription`, la lecture complète dans `data`.
+- Les autres messages sont envoyés au modèle de langage (`LLM_MODEL`) avec les 20 derniers messages de la conversation et le prompt système [prompts/chat-system.md](prompts/chat-system.md) : pas de diagnostic ni de conseil de traitement, 185 et 180 en cas d’urgence, aucun prix, pharmacie ou numéro inventé.
+- `photo` reçoit un formulaire multipart avec `image` et, au besoin, `conversation_id`. La photo est lue par Reducto et rapprochée du catalogue. Elle n’est ni conservée ni archivée : la conversation garde seulement les lignes relevées.
+- La réponse est calculée avant toute écriture : si le modèle ou le lecteur échoue, rien n’est enregistré (502 ou 503).
+
 Les pages web servies sur une autre origine peuvent appeler l’API, avec le cookie de session. `HEYDOC_WEB_ORIGINS` liste ces origines, séparées par des virgules. Par défaut : `http://127.0.0.1:5173,http://localhost:5173`.
 
 ### Routes de test

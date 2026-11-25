@@ -132,9 +132,28 @@ impl Llm {
                 { "role": "user", "content": format!("Texte de l'ordonnance :\n```\n{text}\n```") }
             ]
         });
+        let (content, usage) = self.send(&body).await?;
+        Ok((parse_answer(&content)?, usage))
+    }
+
+    /// A free answer in the conversation. `messages` holds `(role, content)` pairs, oldest first,
+    /// with `role` = `user` or `assistant`.
+    pub async fn chat(&self, system: &str, messages: &[(String, String)]) -> Result<(String, Usage), LlmError> {
+        let mut all = vec![json!({ "role": "system", "content": system })];
+        all.extend(messages.iter().map(|(role, content)| json!({ "role": role, "content": content })));
+        let body = json!({ "model": self.model, "stream": false, "options": { "temperature": 0.3 }, "messages": all });
+        let (content, usage) = self.send(&body).await?;
+        let content = content.trim().to_owned();
+        if content.is_empty() {
+            return Err(LlmError::InvalidAnswer("réponse vide".into()));
+        }
+        Ok((content, usage))
+    }
+
+    async fn send(&self, body: &Value) -> Result<(String, Usage), LlmError> {
         let mut attempt = 0;
         let res = loop {
-            let mut req = self.http.post(format!("{}/api/chat", self.base_url)).json(&body);
+            let mut req = self.http.post(format!("{}/api/chat", self.base_url)).json(body);
             if let Some(key) = &self.api_key {
                 req = req.bearer_auth(key);
             }
@@ -154,14 +173,13 @@ impl Llm {
             }
         };
         let reply: ChatReply = res.json().await.map_err(|e| LlmError::InvalidAnswer(format!("réponse illisible ({e})")))?;
-        let structured = parse_answer(&reply.message.content)?;
         let usage = Usage {
             model: reply.model.unwrap_or_else(|| self.model.clone()),
             prompt_tokens: reply.prompt_eval_count,
             completion_tokens: reply.eval_count,
             duration_ms: reply.total_duration.map(|ns| ns / 1_000_000),
         };
-        Ok((structured, usage))
+        Ok((reply.message.content, usage))
     }
 }
 

@@ -292,6 +292,20 @@ pub async fn me(State(pool): State<PgPool>, headers: HeaderMap) -> Result<Json<A
     account.map(Json).ok_or_else(none)
 }
 
+/// The account of the request's session: its id and first name, or 401.
+pub(crate) async fn current(pool: &PgPool, headers: &HeaderMap) -> Result<(Uuid, String), ApiError> {
+    let none = || ApiError::Unauthorized("not_authenticated", "Connectez-vous pour utiliser le chat.".into());
+    let token = token_from(headers).ok_or_else(none)?;
+    sqlx::query_as(
+        "SELECT s.id, s.first_name FROM sessions x JOIN signups s ON s.id = x.signup_id
+         WHERE x.token_sha256 = $1 AND x.expires_at > now()",
+    )
+    .bind(sha256_hex(&token))
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(none)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

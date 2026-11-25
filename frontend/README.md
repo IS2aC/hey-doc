@@ -6,6 +6,8 @@ Le hero se joue au défilement comme une vidéo : la mascotte laisse place au t�
 
 La section `#inscription` ([account.js](account.js)) propose la création de compte et la connexion, par numéro WhatsApp et mot de passe. Elle appelle `/v1/auth/*` avec le cookie de session et affiche directement le compte si une session est déjà ouverte. L’adresse de l’API est dans la balise `<meta name="heydoc-api">`. Le numéro du bot WhatsApp se renseigne dans `<meta name="heydoc-whatsapp">` : le bouton WhatsApp ouvre alors une conversation avec « Hey Doc » déjà écrit. Pour essayer en local, servez le dépôt sur le port 5173 (`python3 -m http.server 5173` à la racine) et lancez l’API.
 
+Une fois connecté, on arrive sur [chat.html](chat.html) : l’espace de chat, avec les conversations à gauche, le fil au centre et la saisie en bas. On peut écrire, ou envoyer une photo d’ordonnance avec le bouton appareil photo. Sans session, la page renvoie vers la connexion. La conversation ouverte est dans l’adresse (`#c=<id>`).
+
 ## Répartition du travail
 
 | Chantier | État et suite |
