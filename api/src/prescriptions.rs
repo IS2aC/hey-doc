@@ -71,9 +71,9 @@ pub struct PrescriptionLine {
 
 #[derive(Serialize, ToSchema)]
 pub struct ReaderInfo {
-    provider: &'static str,
-    model: String,
-    pages: u32,
+    pub(crate) provider: &'static str,
+    pub(crate) model: String,
+    pub(crate) pages: u32,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -125,26 +125,12 @@ pub struct ImageUpload {
         (status = 502, description = "Le service de lecture a échoué", body = crate::ErrorBody),
         (status = 503, description = "Lecture de photo non configurée ou indisponible", body = crate::ErrorBody)))]
 pub async fn read(State(state): State<AppState>, multipart: Multipart) -> Result<Json<ReadResponse>, ApiError> {
-    let Some(reader) = state.reader.clone() else {
-        return Err(ApiError::Unavailable(
-            "reader_unavailable",
-            "La lecture de photo n’est pas configurée. Utilisez la saisie texte.".into(),
-        ));
-    };
+    let Some(reader) = state.reader.clone() else { return Err(no_reader()) };
     let Upload { image, consent, channel } = upload_from(multipart).await?;
     // HEIC cannot be decoded here to be masked: it is never archived.
     let archive = state.archive.clone().filter(|_| consent && image.extension != "heic");
     let photo = archive.as_ref().map(|_| image.bytes.clone());
-    let transcript = reader.read(image).await.map_err(|e| match e {
-        ReadError::Rejected(_) => ApiError::BadRequest(
-            "image_rejected",
-            "La photo n’a pas pu être lue. Reprenez-la ou saisissez les médicaments.".into(),
-        ),
-        ReadError::Unavailable(detail) => {
-            tracing::error!(%detail, "lecture d’ordonnance impossible");
-            ApiError::Upstream("reader_failed", "La lecture de photo est momentanément indisponible.".into())
-        }
-    })?;
+    let transcript = reader.read(image).await.map_err(reader_error)?;
     let info = ReaderInfo { provider: transcript.provider, model: transcript.model.clone(), pages: transcript.pages };
     let letters: usize = transcript.blocks.iter().map(|b| b.content.chars().filter(|c| c.is_alphabetic()).count()).sum();
     if letters < 15 {
@@ -200,13 +186,30 @@ pub async fn match_text(
     Ok(Json(match_lines(&pool, raw).await?.0))
 }
 
-struct Upload {
-    image: Image,
-    consent: bool,
-    channel: String,
+pub(crate) fn reader_error(e: ReadError) -> ApiError {
+    match e {
+        ReadError::Rejected(_) => ApiError::BadRequest(
+            "image_rejected",
+            "La photo n’a pas pu être lue. Reprenez-la ou saisissez les médicaments.".into(),
+        ),
+        ReadError::Unavailable(detail) => {
+            tracing::error!(%detail, "lecture d’ordonnance impossible");
+            ApiError::Upstream("reader_failed", "La lecture de photo est momentanément indisponible.".into())
+        }
+    }
 }
 
-async fn upload_from(mut multipart: Multipart) -> Result<Upload, ApiError> {
+pub(crate) fn no_reader() -> ApiError {
+    ApiError::Unavailable("reader_unavailable", "La lecture de photo n’est pas configurée. Utilisez la saisie texte.".into())
+}
+
+pub(crate) struct Upload {
+    pub(crate) image: Image,
+    pub(crate) consent: bool,
+    pub(crate) channel: String,
+}
+
+pub(crate) async fn upload_from(mut multipart: Multipart) -> Result<Upload, ApiError> {
     let invalid = |msg: &str| ApiError::BadRequest("invalid_image", msg.into());
     let (mut image, mut consent, mut channel) = (None, false, "web".to_owned());
     while let Some(field) = multipart.next_field().await.map_err(|_| invalid("Formulaire multipart invalide ou image de plus de 10 Mo"))? {
@@ -276,7 +279,7 @@ pub fn lines_from_blocks(blocks: &[TextBlock]) -> Vec<RawLine> {
 }
 
 /// HTML tables become one line per row; Markdown table pipes and separators go away.
-fn strip_markup(s: &str) -> String {
+pub(crate) fn strip_markup(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
@@ -296,7 +299,7 @@ fn strip_markup(s: &str) -> String {
 }
 
 /// Removes list markers ("1.", "2)", "-", "•", "*", "#") and extra spaces.
-fn clean_line(line: &str) -> String {
+pub(crate) fn clean_line(line: &str) -> String {
     let mut s = line.trim().trim_start_matches(['-', '*', '•', '#', '>', '·']).trim_start();
     let digits = s.chars().take_while(|c| c.is_ascii_digit()).count();
     if digits > 0 && digits <= 2 && s[digits..].starts_with(['.', ')', '/']) && !s[digits..].starts_with("./") {
@@ -463,7 +466,7 @@ fn first_name_word(q: &str) -> Option<&str> {
 
 /// Strengths in milligrams ("1g" and "1000 mg" both give 1000). Pack sizes such as "B/20"
 /// are not strengths. With `bare`, a number without a unit counts too ("spasfon 80").
-fn strengths(s: &str, bare: bool) -> Vec<u64> {
+pub(crate) fn strengths(s: &str, bare: bool) -> Vec<u64> {
     let s = s.to_lowercase().replace(',', ".");
     let chars: Vec<char> = s.chars().collect();
     let mut out = vec![];

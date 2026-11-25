@@ -38,7 +38,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             None
         }
     };
-    let state = hey_doc_api::AppState { pool, reader, archive };
+    let llm = hey_doc_api::llm::Llm::from_env().map(std::sync::Arc::new);
+    match &llm {
+        Some(l) => tracing::info!(model = l.model(), "modèle de langage configuré"),
+        None => tracing::warn!("LLM_MODEL absent : la structuration par modèle de langage répondra 503"),
+    }
+    let state = hey_doc_api::AppState { pool, reader, archive, llm };
     axum::serve(listener, hey_doc_api::router_with(state))
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;

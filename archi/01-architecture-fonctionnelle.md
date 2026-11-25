@@ -9,7 +9,7 @@ flowchart LR
     whatsapp["WhatsApp Business Cloud API · Meta"]
     adapter["Adaptateurs web et webhook · Axum"]
     conversation["Parcours et traitement asynchrone · Rust et Tokio"]
-    vision["Transcription multimodale · adaptateur HTTP"]
+    vision["Reducto r-1 Parse · adaptateur HTTP"]
     media[("Stockage objet privé temporaire")]
     api["API de données · Rust, Axum, SQLx"]
     db[("PostgreSQL · catalogue, prix, couvertures et gardes")]
@@ -25,7 +25,7 @@ flowchart LR
     adapter -->|"Événements WhatsApp dédupliqués"| jobs
     conversation <-->|"Sessions et tâches"| jobs
     conversation <-->|"Média en cours de traitement"| media
-    conversation <-->|"Photo utile et lignes JSON"| vision
+    conversation <-->|"Photo utile et blocs transcrits"| vision
     conversation <-->|"Recherche, couverture, estimation et garde"| api
     api <--> db
     sources --> importData

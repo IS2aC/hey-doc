@@ -172,3 +172,49 @@ Même traitement pour une ordonnance saisie au clavier, une ligne par médicamen
 ```json
 { "text": "Doliprane 1000 mg N°2\n1 cp 3 fois par jour\nAmoxicilline 500 mg x1" }
 ```
+
+### Routes de test
+
+Elles servent à explorer les ordonnances comme du texte. Elles ne rapprochent rien et n’archivent rien.
+
+`POST /v1/test/reducto-text` prend le même formulaire que `/v1/prescriptions/read`. Elle renvoie tout le texte lu par Reducto (`text`), les lignes nettoyées (`lines`) et les blocs bruts avec leur type et leur confiance (`blocks`). Chaque appel est facturé par Reducto.
+
+`POST /v1/test/similar-products` reçoit un texte, par exemple le `text` de la route précédente :
+
+```json
+{ "text": "Amoxicillin + Clavulanic acid\n(Co-Amoxiclav) 500/125 mg/tab #21\nParacetamol 500 mg/tab #5",
+  "min_score": 0.35, "per_line": 5 }
+```
+
+Chaque ligne d’au moins 3 lettres est comparée à tous les libellés du catalogue par similarité cosinus sur les trigrammes de caractères, sans accents ni casse. `lines` donne les produits proches de chaque ligne, `products` la liste des produits cités ou proches sans doublon, avec le meilleur score et les lignes où ils apparaissent. `min_score` va de 0 à 1 (0,35 par défaut), `per_line` de 1 à 20 (5 par défaut).
+
+```json
+{ "catalogue_size": 6142, "method": "cosine_char_trigrams",
+  "lines": [ { "index": 2, "text": "Paracetamol 500 mg/tab #5", "matches": [
+    { "id": 4175, "label": "PARACETAMOL CP 500 MG B/10", "ingredient": "PARACETAMOL", "score": 0.781 } ] } ],
+  "products": [ { "id": 4175, "label": "PARACETAMOL CP 500 MG B/10", "ingredient": "PARACETAMOL", "score": 0.781, "lines": [2] } ] }
+```
+
+Sous 0,45 environ, les correspondances sont souvent du bruit : « Lic. No. 12 » ressemble à « NO-SPALGIN » à 0,40.
+
+`POST /v1/test/llm-structure` envoie un texte d’ordonnance à un modèle de langage, qui renvoie les médicaments en JSON. Le prompt système est dans [prompts/prescription-structure.md](prompts/prescription-structure.md) : copie exacte du passage, aucun nom de personne, pas de posologie, pas de correction d’orthographe. La réponse est contrainte par un schéma JSON et la température est à 0.
+
+Le modèle passe par l’API d’Ollama, qui sert aussi bien Ollama Cloud qu’un Ollama local :
+
+| Variable | Ollama Cloud | Ollama local |
+|---|---|---|
+| `LLM_MODEL` | nom d’un modèle cloud | nom d’un modèle téléchargé |
+| `LLM_BASE_URL` | `https://ollama.com` (par défaut) | `http://localhost:11434` |
+| `LLM_API_KEY` | clé créée sur ollama.com | vide |
+
+Pour chaque médicament, le modèle donne aussi la DCI, même quand le nom écrit est déjà la molécule, et une classe thérapeutique (`therapeutic_class`). `matches` propose ensuite les `per_item` présentations du catalogue les plus proches (3 par défaut, de 0 à 10). Le score compte pour 50 % la molécule ou le nom, 25 % le dosage, 15 % la forme et 10 % la marque écrite dans le libellé. `strength_match` et `form_match` indiquent si le dosage et la forme écrits correspondent, et `therapeutic_group` donne la classe enregistrée dans le catalogue.
+
+Sans `LLM_MODEL`, la route répond 503 `llm_unavailable`.
+
+```json
+{ "text": "Name of Patient\nAmoxicillin + Clavulanic acid\n(Co-Amoxiclav) 500/125 mg/tab\n#21\nParacetamol 500 mg/tab #5", "per_item": 3 }
+```
+
+La réponse donne la consommation (`usage` : modèle, tokens d’entrée et de sortie, durée) pour estimer le coût par ordonnance, puis chaque médicament avec ses champs (`source_text`, `name`, `ingredients`, `strengths`, `form`, `boxes`, `units`). `grounded` vaut `false` si le passage cité ne figure pas dans le texte envoyé : c’est une invention du modèle, à écarter. `matches` donne les produits du catalogue les plus proches, par similarité cosinus du nom et des dosages avec le libellé, et des molécules avec la DCI. `ignored` liste les lignes écartées, sans nom de personne.
+
+Avant d’envoyer de vraies ordonnances à un modèle hébergé, vérifier la politique de conservation des données du fournisseur.

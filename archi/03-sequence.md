@@ -8,7 +8,7 @@ sequenceDiagram
     participant Web as Chat web
     participant Meta as WhatsApp Cloud API
     participant Rust as Backend conversation Rust
-    participant Vision as Modèle multimodal
+    participant Vision as Reducto r-1 Parse
     participant API as API de données Rust
     participant DB as PostgreSQL
 
@@ -28,8 +28,9 @@ sequenceDiagram
     alt Photo inexploitable
         Rust-->>Patient: Demande une nouvelle photo via le canal d’origine
     else Photo exploitable
-        Rust->>Vision: Transmet la photo utile avec un schéma JSON
-        Vision-->>Rust: Lignes transcrites et champs incertains
+        Rust->>Vision: Transmet la photo utile pour parsing
+        Vision-->>Rust: Blocs et texte transcrits
+        Rust->>Rust: Normalise les blocs et signale les champs incertains
         loop Pour chaque ligne exploitable
             Rust->>API: Recherche de présentations
             API->>DB: Recherche par libellé, dosage et forme

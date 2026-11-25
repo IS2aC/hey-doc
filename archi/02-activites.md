@@ -11,7 +11,7 @@ flowchart TD
     photo{"Photo ou saisie texte ?"}
     quality{"Photo exploitable ?"}
     retake["Demander une nouvelle photo ou une saisie texte"]
-    extract["Transcrire les lignes en JSON"]
+    extract["Transcrire avec Reducto r-1 Parse et normaliser les blocs en lignes"]
     match["Chercher les présentations dans le catalogue"]
     ambiguous{"Une donnée nécessaire reste ambiguë ?"}
     confirm["Demander confirmation ou signaler la ligne au pharmacien"]

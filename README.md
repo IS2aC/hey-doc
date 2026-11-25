@@ -33,7 +33,7 @@ Le pilote couvre l’aide à la lecture, le chiffrage et l’orientation vers un
 
 ## Architecture retenue
 
-**Un agent conversationnel à parcours contrôlés, piloté par Rust.** Le backend conserve l’état de la demande, choisit la prochaine étape, pose les questions manquantes et appelle les fonctions métier autorisées. Le modèle sert principalement à transcrire une photo en JSON. Un petit modèle texte peut aussi classifier une demande libre que les boutons, les règles ou l’état de session ne suffisent pas à router.
+**Un agent conversationnel à parcours contrôlés, piloté par Rust.** Le backend conserve l’état de la demande, choisit la prochaine étape, pose les questions manquantes et appelle les fonctions métier autorisées. Reducto r-1 Parse transcrit les photos en blocs structurés. Le backend normalise les blocs en lignes d’ordonnance. Un petit modèle texte peut aussi classifier une demande libre que les boutons, les règles ou l’état de session ne suffisent pas à router.
 
 La recherche catalogue, la couverture, le calcul du montant et la garde reposent sur des données structurées. Un RAG documentaire classique serait utile si Hey-Doc élargit plus tard son périmètre à des questions générales avec des sources éditoriales validées. Pour les deux parcours du pilote, une recherche PostgreSQL par libellé, DCI et présentation suffit comme point de départ.
 
@@ -44,7 +44,7 @@ La recherche catalogue, la couverture, le calcul du montant et la garde reposent
 | Conversation | Rust, Axum, Tokio et Serde pour router les messages, valider les sorties du modèle, gérer l’état de session et produire des réponses adaptées au canal. |
 | API métier | Rust, Axum, SQLx et PostgreSQL. Les modules conversation et données peuvent être déployés dans le même service au pilote. Recherche par champs normalisés et similarité avec `pg_trgm`. PostGIS pourra servir au classement GPS si nécessaire. |
 | Imports et traitements | Commande Rust pour valider et publier des fichiers CSV. Extraction texte pour les PDF numériques, OCR avec relecture pour les scans. Une table PostgreSQL sert de file persistante pour reprendre les traitements asynchrones. |
-| Lecture multimodale | Adaptateur HTTP interchangeable. Entrée limitée au contenu nécessaire, sortie JSON structurée par ligne. Le backend valide le format et rapproche les candidats du catalogue. |
+| Lecture d’ordonnance | Adaptateur HTTP pour Reducto r-1 Parse. Reducto renvoie des blocs et du texte. Rust normalise les lignes et rapproche les candidats du catalogue. |
 | Hébergement | Conteneurs derrière HTTPS, PostgreSQL sauvegardé et stockage objet privé à durée limitée pour les images en cours de traitement. |
 
 ## Collecte et publications
@@ -73,18 +73,17 @@ L’API métier reçoit des identifiants de produits et les paramètres de reche
 
 ## LLM et coûts
 
-**Choix de départ proposé** — appeler directement un modèle multimodal économique pour la transcription, derrière l’adaptateur Rust. Tester d’abord Gemini 2.5 Flash-Lite et comparer Gemini 3.1 Flash-Lite sur des ordonnances anonymisées. L’usage envisagé est la transcription, avec validation de l’adéquation des conditions du fournisseur avant tout envoi de données réelles. [Tarifs Gemini](https://ai.google.dev/gemini-api/docs/pricing) · [Conditions Gemini](https://ai.google.dev/gemini-api/terms)
+**Fournisseur principal pour les photos d’ordonnance** — Reducto r-1 via l’API Parse. Le modèle prend en charge les pages photographiées et le manuscrit. Parse renvoie des blocs et du texte. L’API Extract est un produit distinct qui extrait des champs selon un schéma JSON et inclut le parsing. On l’évaluera si la normalisation des blocs en Rust donne trop peu de lignes exploitables. [Reducto Parse](https://reducto.ai/parse) · [Reducto Extract](https://reducto.ai/extract)
 
-| Option | Coût d’inférence indicatif |
-|---|---|
-| Gemini 2.5 Flash-Lite | 0,10 USD par million de tokens en entrée texte/image et 0,40 USD en sortie. **3,20 USD pour 10 000 lectures** dans le scénario ci-dessous. |
-| Gemini 3.1 Flash-Lite | 0,25 USD par million de tokens en entrée texte/image et 1,50 USD en sortie. **9,50 USD pour 10 000 lectures** dans le même scénario. |
-| Hermes Agent | Le coût dépend du modèle configuré, des éventuels appels de vision supplémentaires et de l’hébergement. Hermes expose une API compatible OpenAI et une intégration WhatsApp Cloud. [Serveur API Hermes](https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server) · [Intégration WhatsApp](https://hermes-agent.nousresearch.com/docs/user-guide/messaging/whatsapp-cloud) |
-| Modèle multimodal auto-hébergé | Le coût dépend du GPU, du taux d’utilisation et de la maintenance. À comparer au coût par ordonnance exploitable si le volume ou les exigences d’hébergement le justifient. |
+| Option | Tarif standard indicatif | Scénario de 10 000 pages |
+|---|---|---|
+| Reducto r-1 Parse, choix de départ | 10 USD pour 1 000 pages | 100 USD |
+| Reducto Extract, parsing compris | 20 USD pour 1 000 pages | 200 USD |
+| Gemini 2.5 Flash-Lite, référence de comparaison | 0,10 USD par million de tokens en entrée texte/image et 0,40 USD en sortie | 3,20 USD dans le scénario de 2 000 tokens facturés en entrée et 300 en sortie par page |
 
-Calcul illustratif aux tarifs consultés le 22 novembre 2026, avec **2 000 tokens facturés en entrée, image comprise, et 300 en sortie par photo**. La consommation réelle dépend de l’image et du modèle. Le calcul exclut les relances, l’hébergement, le stockage, la vérification humaine et les frais WhatsApp. Meta applique ses propres règles de facturation par catégorie et marché. Le pilote privilégie les réponses aux demandes entrantes dans la fenêtre de service de 24 heures. [Tarifs Gemini](https://ai.google.dev/gemini-api/docs/pricing) · [Tarifs Meta](https://business.whatsapp.com/products/platform-pricing)
+Estimations aux tarifs consultés le 22 novembre 2026, avec une page par photo, hors relances, options payantes, hébergement, stockage, vérification humaine et frais WhatsApp. Le scénario Gemini illustre un coût d’inférence. La qualité sur les ordonnances manuscrites et les conditions de traitement des données restent à vérifier pour chaque fournisseur. [Tarifs Reducto](https://reducto.ai/pricing/) · [Tarifs Gemini](https://ai.google.dev/gemini-api/docs/pricing) · [Tarifs Meta](https://business.whatsapp.com/products/platform-pricing)
 
-Le principal levier de coût est d’éviter un appel modèle pour une garde, un calcul ou un clic de confirmation. Pour une photo, le parcours tente une lecture multimodale et plafonne les nouvelles tentatives. En cas d’ambiguïté persistante, il demande une photo ciblée ou oriente vers une confirmation en pharmacie. Le fournisseur se choisit sur le **coût par ordonnance exploitable**, la latence, les erreurs de nom ou de dosage et la proportion de lignes ambiguës correctement signalées.
+Les gardes, les calculs et les confirmations guidées passent par Rust sans appel à Reducto. Sur un corpus anonymisé relu par un pharmacien, on mesurera le coût par ordonnance exploitable, la latence, les erreurs de nom ou de dosage et la proportion de lignes ambiguës correctement signalées. En cas d’ambiguïté persistante, le chat demande une photo ciblée ou une confirmation en pharmacie. Avant d’envoyer une ordonnance réelle, l’équipe doit vérifier les conditions Reducto de conservation et de suppression qui s’appliquent à son offre. [Offres Reducto](https://reducto.ai/pricing/)
 
 **Place de Hermes.** Il peut être essayé comme moteur conversationnel derrière le backend, en lui exposant uniquement des fonctions métier autorisées. Le backend garde la maîtrise des validations et des actions. L’adaptateur WhatsApp du pilote reste dans Axum. Un essai de la passerelle Hermes se ferait sur un environnement distinct. L’option sera retenue si elle améliore les parcours mesurés à coût et qualité acceptables.
 
@@ -92,7 +91,7 @@ Le principal levier de coût est d’éviter un appel modèle pour une garde, un
 
 1. Choisir un secteur pilote et importer le catalogue 2026, les références CMU contrôlées, un échantillon de prix comptant et un planning local.
 2. Vérifier les cinq routes Rust avec une ordonnance saisie à la main et une garde le dimanche soir. Tester aussi un prix manquant et un planning absent.
-3. Comparer les modèles sur un corpus anonymisé relu par un pharmacien et mesurer le coût par ordonnance exploitable.
+3. Évaluer Reducto r-1 Parse et comparer les alternatives sur un corpus anonymisé relu par un pharmacien et mesurer le coût par ordonnance exploitable.
 4. Brancher le chat web et WhatsApp sur le même parcours. Vérifier que les deux canaux donnent les mêmes résultats, qu’un webhook répété ne crée qu’un traitement et qu’une ligne ambiguë ne gonfle pas le total.
 
 ## Diagrammes
@@ -100,3 +99,7 @@ Le principal levier de coût est d’éviter un appel modèle pour une garde, un
 - [Architecture fonctionnelle et stack web et WhatsApp](archi/01-architecture-fonctionnelle.md)
 - [Diagramme d’activités](archi/02-activites.md)
 - [Diagramme de séquence](archi/03-sequence.md)
+
+## Fiche de réalisation
+
+- [TODO de Hey-Doc, du branding au pilote](TODO.md)

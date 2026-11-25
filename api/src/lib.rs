@@ -1,7 +1,9 @@
 pub mod archive;
 mod catalog;
+mod corpus;
 mod duty;
 mod estimates;
+pub mod llm;
 mod prescriptions;
 pub mod reducto;
 
@@ -39,7 +41,10 @@ pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../database/migra
         estimates::create,
         duty::search,
         prescriptions::read,
-        prescriptions::match_text
+        prescriptions::match_text,
+        corpus::reducto_text,
+        corpus::similar_products,
+        corpus::llm_structure
     )
 )]
 pub struct ApiDoc;
@@ -52,6 +57,8 @@ pub struct AppState {
     pub reader: Option<Arc<dyn reducto::PrescriptionReader>>,
     /// `None` when object storage is not configured: consent is then ignored, nothing is kept.
     pub archive: Option<Arc<archive::Archive>>,
+    /// `None` without `LLM_MODEL`: the language model routes answer 503.
+    pub llm: Option<Arc<llm::Llm>>,
 }
 
 impl FromRef<AppState> for PgPool {
@@ -61,11 +68,11 @@ impl FromRef<AppState> for PgPool {
 }
 
 pub fn router(pool: PgPool) -> Router {
-    router_with(AppState { pool, reader: None, archive: None })
+    router_with(AppState { pool, reader: None, archive: None, llm: None })
 }
 
 pub fn router_with_reader(pool: PgPool, reader: Option<Arc<dyn reducto::PrescriptionReader>>) -> Router {
-    router_with(AppState { pool, reader, archive: None })
+    router_with(AppState { pool, reader, archive: None, llm: None })
 }
 
 pub fn router_with(state: AppState) -> Router {
@@ -82,6 +89,12 @@ pub fn router_with(state: AppState) -> Router {
             post(prescriptions::read).layer(DefaultBodyLimit::max(prescriptions::MAX_IMAGE_BYTES + 64 * 1024)),
         )
         .route("/v1/prescriptions/match", post(prescriptions::match_text))
+        .route(
+            "/v1/test/reducto-text",
+            post(corpus::reducto_text).layer(DefaultBodyLimit::max(prescriptions::MAX_IMAGE_BYTES + 64 * 1024)),
+        )
+        .route("/v1/test/similar-products", post(corpus::similar_products))
+        .route("/v1/test/llm-structure", post(corpus::llm_structure))
         .with_state(state)
         .merge(SwaggerUi::new("/docs").url("/docs/openapi.json", ApiDoc::openapi()))
 }

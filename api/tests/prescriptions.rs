@@ -253,6 +253,7 @@ async fn archive_app(pool: PgPool, store: Arc<InMemory>) -> Router {
         pool: pool.clone(),
         reader: Some(Arc::new(reader)),
         archive: Some(Arc::new(Archive::new(store, pool, 30))),
+        llm: None,
     })
 }
 
@@ -340,9 +341,108 @@ async fn archive_writes_to_a_real_s3_store(pool: PgPool) {
         vec![("Text", "Dr KOUASSI Jean\nDOLIPRANE 1000 MG N°2")],
         vec![("Dr KOUASSI Jean", 0.0), ("DOLIPRANE 1000 MG N°2", 0.3)],
     );
-    let app = hey_doc_api::router_with(AppState { pool: pool.clone(), reader: Some(Arc::new(reader)), archive: Some(archive.clone()) });
+    let app = hey_doc_api::router_with(AppState { pool: pool.clone(), reader: Some(Arc::new(reader)), archive: Some(archive.clone()), llm: None });
     let (_, v) = send(&app, photo_request_with(&white_jpeg(), &[("consent", "true")])).await;
     assert!(v["archive_id"].is_string(), "{v}");
     wait_for_rows(&pool, 1).await;
     assert_eq!(archive.purge_expired(chrono::Utc::now() + chrono::Duration::days(400)).await.unwrap(), 1);
+}
+
+#[sqlx::test(migrator = "hey_doc_api::MIGRATOR")]
+async fn test_route_returns_the_text_read_by_reducto(pool: PgPool) {
+    let reader = FakeReader(vec![("Header", "Clinique X"), ("Text", "1. Doliprane 1000 mg\n- Spasfon 80")], vec![]);
+    let app = app(pool, Some(Arc::new(reader))).await;
+    let req = photo_request(JPEG);
+    let (parts, body) = req.into_parts();
+    let mut req = Request::from_parts(parts, body);
+    *req.uri_mut() = "/v1/test/reducto-text".parse().unwrap();
+    let (s, v) = send(&app, req).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["text"], "Clinique X\n1. Doliprane 1000 mg\n- Spasfon 80");
+    assert_eq!(v["lines"], json!(["Clinique X", "Doliprane 1000 mg", "Spasfon 80"]));
+    assert_eq!(v["blocks"][0]["kind"], "Header");
+}
+
+#[sqlx::test(migrator = "hey_doc_api::MIGRATOR")]
+async fn test_route_finds_products_by_cosine_similarity(pool: PgPool) {
+    let app = app(pool, None).await;
+    let req = Request::post("/v1/test/similar-products")
+        .header("content-type", "application/json")
+        .body(Body::from(json!({ "text": "Name of Patient\nDolipane 1000 mg\nSpasfon lyoc 80", "per_line": 2 }).to_string()))
+        .unwrap();
+    let (s, v) = send(&app, req).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["catalogue_size"], 5);
+    assert_eq!(v["method"], "cosine_char_trigrams");
+    assert!(v["lines"][0]["matches"].as_array().unwrap().is_empty());
+    assert_eq!(v["lines"][1]["matches"][0]["id"], 1);
+    assert_eq!(v["lines"][2]["matches"][0]["id"], 5);
+    let top = &v["products"][0];
+    assert!(top["score"].as_f64().unwrap() > 0.5);
+    assert!(top["lines"].is_array());
+}
+
+/// A local stand-in for Ollama Cloud's /api/chat: the real adapter talks to it.
+#[sqlx::test(migrator = "hey_doc_api::MIGRATOR")]
+async fn llm_route_structures_checks_and_matches(pool: PgPool) {
+    sqlx::raw_sql(FIXTURE).execute(&pool).await.unwrap();
+    let fake = Router::new().route(
+        "/api/chat",
+        post(|h: HeaderMap, Json(body): Json<Value>| async move {
+            assert_eq!(h.get("authorization").unwrap(), "Bearer cloud-key");
+            assert_eq!(body["model"], "test-model");
+            assert_eq!(body["stream"], false);
+            assert_eq!(body["options"]["temperature"], 0);
+            assert!(body["format"]["properties"]["items"].is_object(), "JSON schema imposed");
+            assert!(body["messages"][0]["content"].as_str().unwrap().contains("N'invente rien"));
+            assert!(body["messages"][1]["content"].as_str().unwrap().contains("Dolipane 1000 mg"));
+            let answer = json!({
+                "items": [
+                    { "source_text": "Dolipane 1000 mg N°2", "name": "Dolipane", "ingredients": [], "strengths": ["1000 mg"],
+                      "form": null, "boxes": 2, "units": null, "therapeutic_class": "Antalgique et antipyrétique" },
+                    { "source_text": "Augmentin 1 g", "name": "Augmentin", "ingredients": ["amoxicilline"], "strengths": ["1 g"],
+                      "form": "sachet", "boxes": null, "units": null, "therapeutic_class": "Antibiotique" }
+                ],
+                "ignored": [ { "text": "Dr [nom]", "reason": "identite" } ]
+            });
+            Json(json!({
+                "model": "test-model",
+                "message": { "role": "assistant", "content": format!("```json\n{answer}\n```") },
+                "prompt_eval_count": 812, "eval_count": 164, "total_duration": 2_500_000_000u64
+            }))
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, fake).await.unwrap() });
+
+    let llm = hey_doc_api::llm::Llm::new(base, Some("cloud-key".into()), "test-model");
+    let app = hey_doc_api::router_with(AppState { pool, reader: None, archive: None, llm: Some(Arc::new(llm)) });
+    let req = Request::post("/v1/test/llm-structure")
+        .header("content-type", "application/json")
+        .body(Body::from(json!({ "text": "Dr Kouassi\nDolipane 1000 mg N°2\n1 cp 3 fois par jour" }).to_string()))
+        .unwrap();
+    let (s, v) = send(&app, req).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["usage"], json!({ "model": "test-model", "prompt_tokens": 812, "completion_tokens": 164, "duration_ms": 2500 }));
+    assert_eq!(v["items"][0]["grounded"], true);
+    assert_eq!(v["items"][0]["boxes"], 2);
+    assert_eq!(v["items"][0]["matches"][0]["id"], 1, "{v}");
+    assert_eq!(v["items"][0]["matches"][0]["strength_match"], true);
+    assert_eq!(v["items"][0]["therapeutic_class"], "Antalgique et antipyrétique");
+    assert!(v.get("language").is_none());
+    assert_eq!(v["items"][1]["grounded"], false, "invented by the model");
+    assert_eq!(v["ignored"][0]["text"], "Dr [nom]");
+}
+
+#[sqlx::test(migrator = "hey_doc_api::MIGRATOR")]
+async fn llm_route_without_a_model_is_unavailable(pool: PgPool) {
+    let app = app(pool, None).await;
+    let req = Request::post("/v1/test/llm-structure")
+        .header("content-type", "application/json")
+        .body(Body::from(json!({ "text": "Doliprane" }).to_string()))
+        .unwrap();
+    let (s, v) = send(&app, req).await;
+    assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(v["error"], "llm_unavailable");
 }
