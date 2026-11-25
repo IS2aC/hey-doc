@@ -2,6 +2,8 @@
 
 Ouvrir [index.html](index.html) dans un navigateur. La page réutilise les actifs de [branding](../branding/README.md). Elle fonctionne aussi sans serveur local. Les deux exemples affichent des données fictives.
 
+Le hero se joue au défilement comme une vidéo : la mascotte laisse place au téléphone, l’ordonnance est photographiée puis lue, et le sous-total s’affiche. La timeline est dans [landing.js](landing.js) (`playFilm`). Elle utilise GSAP et ScrollTrigger 3.13, copiés dans `vendor/` pour éviter un CDN. Si l’utilisateur demande moins d’animations, ou si GSAP ne se charge pas, la page affiche directement l’état final et les trois étapes en liste.
+
 ## Répartition du travail
 
 | Chantier | État et suite |

@@ -6,8 +6,11 @@
   <meta name="description" content="Découvrez Hey-Doc, l’assistant qui vous aide à estimer le coût de votre ordonnance et à trouver une pharmacie de garde en Côte d’Ivoire.">
   <title>Hey-Doc · Votre ordonnance, votre budget</title>
   <link rel="icon" href="../branding/heydoc-mascotte.svg" type="image/svg+xml">
+  <script>if (!matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.classList.add('cine');</script>
   <link rel="stylesheet" href="../branding/theme.css">
   <link rel="stylesheet" href="landing.css">
+  <script src="vendor/gsap.min.js" defer></script>
+  <script src="vendor/ScrollTrigger.min.js" defer></script>
   <script src="landing.js" defer></script>
 </head>
 <body>
@@ -25,23 +28,68 @@
 
   <main id="contenu">
     <div class="scroll-progress" aria-hidden="true"></div>
-    <section class="hero wrap" aria-labelledby="headline">
-      <div class="hero-copy">
-        <p class="eyebrow"><span></span> Assistant pharmacie en Côte d’Ivoire</p>
-        <h1 id="headline">Votre ordonnance,<br> <em>votre budget.</em></h1>
-        <p class="lead">Estimez ce que vous paierez en pharmacie, produit par produit. Trouvez aussi une pharmacie de garde dans votre secteur.</p>
-        <div class="hero-actions">
-          <a class="button primary" href="#demo" data-select="ordonnance">Essayer la démo</a>
-          <a class="text-link" href="#demo" data-select="garde">Trouver une garde</a>
-        </div>
-        <p class="demo-note">Démo sur des données fictives. Aucune photo à envoyer.</p>
-      </div>
-      <div class="hero-art">
-        <div class="orbit" aria-hidden="true"></div>
-        <img src="../branding/heydoc-mascotte.svg" alt="La mascotte de Hey-Doc, avec son bandana turquoise" width="512" height="512">
-        <div class="sample">
-          <div class="sample-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 3h8l4 4v14H6zM14 3v5h4M9 12h6m-6 4h6" stroke-linejoin="round" stroke-linecap="round"/></svg></div>
-          <div><p>Exemple d’estimation</p><strong>6 100 <small>FCFA</small></strong></div>
+    <section class="film" aria-labelledby="headline">
+      <div class="film-track">
+        <div class="film-stage wrap">
+          <div class="film-copy">
+            <div class="film-intro">
+              <p class="eyebrow"><span></span> Assistant pharmacie en Côte d’Ivoire</p>
+              <h1 id="headline">Votre ordonnance,<br> <em>votre budget.</em></h1>
+              <p class="lead">Estimez ce que vous paierez en pharmacie, produit par produit. Trouvez aussi une pharmacie de garde dans votre secteur.</p>
+              <div class="hero-actions">
+                <a class="button primary" href="#demo" data-select="ordonnance">Essayer la démo</a>
+                <a class="text-link" href="#demo" data-select="garde">Trouver une garde</a>
+              </div>
+              <p class="demo-note">Démo sur des données fictives. Aucune photo à envoyer.</p>
+            </div>
+            <ol class="film-steps">
+              <li data-film-step>
+                <span aria-hidden="true">01</span>
+                <h2>Photographiez votre ordonnance</h2>
+                <p>Cadrez la page entière. Une photo lisible aide à retrouver le nom et le dosage de chaque produit.</p>
+              </li>
+              <li data-film-step>
+                <span aria-hidden="true">02</span>
+                <h2>Vérifiez ce que Hey-Doc a lu</h2>
+                <p>Les produits identifiés s’affichent avec leur présentation. Une ligne difficile à lire reste à confirmer en pharmacie.</p>
+              </li>
+              <li data-film-step>
+                <span aria-hidden="true">03</span>
+                <h2>Voyez combien prévoir</h2>
+                <p>Le sous-total additionne les lignes avec un prix comptant disponible. Les lignes à vérifier restent visibles.</p>
+                <a class="button primary" href="#demo" data-select="ordonnance">Essayer l’exemple complet</a>
+              </li>
+            </ol>
+          </div>
+          <div class="film-art" aria-hidden="true">
+            <div class="orbit"></div>
+            <img class="film-mascot" src="../branding/heydoc-mascotte.svg" alt="" width="512" height="512">
+            <div class="phone">
+              <div class="phone-bar"><img src="../branding/heydoc-mascotte.svg" alt="" width="40" height="40"><strong>Hey-Doc</strong><span>Exemple fictif</span></div>
+              <div class="phone-screen">
+                <div class="rx">
+                  <strong>Ordonnance</strong>
+                  <i></i><i></i><i></i><i></i><i></i>
+                  <b class="rx-scan"></b>
+                </div>
+                <div class="rx-flash"></div>
+                <div class="rows">
+                  <div class="row"><strong>Produit A · 500 mg</strong><span>2 500 FCFA</span></div>
+                  <div class="row"><strong>Produit B · 20 mg</strong><span>3 600 FCFA</span></div>
+                  <div class="row row-warning"><strong>Ligne 3</strong><span>À confirmer</span></div>
+                </div>
+                <div class="total">
+                  <span>Sous-total sans bon</span>
+                  <strong><output class="total-amount">6 100</output> <small>FCFA</small></strong>
+                  <span>2 lignes chiffrées sur 3</span>
+                </div>
+              </div>
+            </div>
+            <div class="duty-chip">
+              <i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M19 10c0 5-7 11-7 11s-7-6-7-11a7 7 0 1 1 14 0Z"/><circle cx="12" cy="10" r="2.3"/></svg></i>
+              <div><strong>Garde ce soir</strong><span>Yopougon · Dim. 19 h à lun. 8 h</span></div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -85,59 +133,20 @@
       </div>
     </section>
 
-    <section class="story" aria-labelledby="story-title">
-      <div class="wrap story-grid">
-        <div class="story-copy">
-          <h2 id="story-title" data-reveal>De la photo<br> au prix en FCFA.</h2>
-          <ol class="story-steps">
-            <li data-reveal data-step="capture">
-              <span aria-hidden="true">01</span>
-              <h3>Photographiez votre ordonnance</h3>
-              <p>Cadrez la page entière. Une photo lisible aide à retrouver le nom et le dosage de chaque produit.</p>
-            </li>
-            <li data-reveal data-step="lecture">
-              <span aria-hidden="true">02</span>
-              <h3>Vérifiez ce que Hey-Doc a lu</h3>
-              <p>Les produits identifiés s’affichent avec leur présentation. Une ligne difficile à lire reste à confirmer en pharmacie.</p>
-            </li>
-            <li data-reveal data-step="budget">
-              <span aria-hidden="true">03</span>
-              <h3>Voyez combien prévoir</h3>
-              <p>Le sous-total additionne les lignes avec un prix comptant disponible. Vous voyez aussi les lignes encore à vérifier.</p>
-            </li>
-          </ol>
-          <a class="button primary story-action" href="#demo" data-select="ordonnance">Essayer l’exemple complet</a>
-        </div>
-        <div class="story-preview" aria-hidden="true">
-          <div class="story-stage" data-scene="capture">
-            <div class="stage-brand"><img src="../branding/heydoc-mascotte.svg" width="38" height="38" alt=""> Hey-Doc <span>Exemple fictif</span></div>
-            <div class="stage-content">
-              <div class="scene" data-scene-panel="capture">
-                <div class="paper">
-                  <strong>Ordonnance</strong>
-                  <i></i><i></i><i></i>
-                </div>
-                <p>Photo de votre ordonnance</p>
-              </div>
-              <div class="scene" data-scene-panel="lecture">
-                <div class="scene-row"><strong>Produit A</strong><span>500 mg</span></div>
-                <div class="scene-row"><strong>Produit B</strong><span>20 mg</span></div>
-                <div class="scene-row scene-warning"><strong>Ligne 3</strong><span>À confirmer</span></div>
-                <p>Présentations identifiées</p>
-              </div>
-              <div class="scene" data-scene-panel="budget">
-                <div class="scene-total">
-                  <span>Sous-total sans bon</span>
-                  <strong>6 100 <small>FCFA</small></strong>
-                  <span>2 lignes chiffrées sur 3</span>
-                </div>
-                <p>Estimation en pharmacie</p>
-              </div>
-            </div>
-            <div class="stage-indicators"><i></i><i></i><i></i></div>
-          </div>
+    <section class="trust" aria-labelledby="trust-title">
+      <div class="wrap trust-inner">
+        <div class="trust-copy" data-reveal>
+          <p class="eyebrow"><span></span> Jusqu’au comptoir</p>
+          <h2 id="trust-title">Hey-Doc prépare.<br> <em>Votre pharmacien confirme.</em></h2>
+          <p>Vous arrivez en pharmacie avec un budget et les bonnes questions. Le choix du produit, le dosage et toute substitution restent l’affaire de votre pharmacien.</p>
+          <ul class="trust-points">
+            <li>Les lignes incertaines restent signalées, jamais devinées.</li>
+            <li>Aucun diagnostic ni changement de traitement.</li>
+            <li>Chaque prix indique sa source et sa date.</li>
+          </ul>
         </div>
       </div>
+      <img class="trust-art" src="images/poignee-main-1191.webp" srcset="images/poignee-main-640.webp 640w, images/poignee-main-1191.webp 1191w" sizes="(max-width: 900px) 92vw, 54vw" width="1191" height="1321" loading="lazy" decoding="async" alt="La main gantée d’un pharmacien serre fermement celle d’un patient.">
     </section>
 
     <section id="demo" class="wrap demo" data-reveal aria-labelledby="demo-title">
