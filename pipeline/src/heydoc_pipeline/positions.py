@@ -284,8 +284,7 @@ def assess(ests: list[dict], links: list[dict], communes, osm: list[dict], gmaps
             if best:
                 row.update(proposed_source=best[0], proposed_lat=best[1], proposed_lng=best[2],
                            proposed_distance_m=round(distance_m(e["lat"], e["lng"], best[1], best[2])),
-                           confirmed_by=", ".join(agree), confidence=confidence,
-                           accept="oui" if confidence == "haute" else "")
+                           confirmed_by=", ".join(agree), confidence=confidence)
             else:
                 row["confidence"] = "aucune source"
         rows.append(row)
@@ -293,9 +292,8 @@ def assess(ests: list[dict], links: list[dict], communes, osm: list[dict], gmaps
 
 
 def human_decision(r: dict) -> bool:
-    """The row differs from what the pipeline prefills: someone has reviewed it."""
-    prefilled = "oui" if r.get("confidence") == "haute" else ""
-    return (r.get("accept") or "") != prefilled or any(r.get(k) for k in ("corrected_lat", "corrected_lng", "note"))
+    """The pipeline leaves `accept` empty: anything filled in was written by a reviewer."""
+    return any(r.get(k) for k in ("accept", "corrected_lat", "corrected_lng", "note"))
 
 
 def summary(rows: list[dict]) -> dict[str, dict[str, int]]:

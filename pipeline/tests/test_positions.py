@@ -38,8 +38,8 @@ def test_checker_flags_wrong_commune_and_copies_but_not_the_airp_owner():
 
 
 def test_only_reviewed_rows_are_kept_across_runs():
-    assert not human_decision({"confidence": "haute", "accept": "oui"})
-    assert human_decision({"confidence": "haute", "accept": ""})
+    assert not human_decision({"confidence": "haute", "accept": ""})
+    assert human_decision({"confidence": "haute", "accept": "oui"})
     assert human_decision({"confidence": "aucune source", "accept": "garder"})
     assert human_decision({"confidence": "moyenne", "accept": "oui", "corrected_lat": "5.3"})
 
