@@ -44,7 +44,7 @@ uv run pytest
 | MUGEF-CI, novembre 2022 | 720 lignes | Code, libellé, groupe, DCI, catégorie, prix, régime CMU. |
 | Décision CMU n° 0016 du 29/09/2025 | 178 lignes (117 HTA, 61 diabète) | Molécule et dosage, spécialité, prix de la colonne « PRIX PUBLIC ». Texte de la décision dans `data/staging/cmu_hta_decision.txt`. |
 | Google Maps, recherche par officine | 135 pharmacies recherchées | Nom, catégorie, adresse, téléphone, GPS, identifiant de lieu. Seulement pour compléter les champs vides. |
-| [OpenStreetMap](https://www.openstreetmap.org/copyright) (Nominatim, Overpass) | 10 communes d'Abidjan | Limites des communes, et pharmacies cartographiées quand le serveur Overpass répond. Données © les contributeurs d'OpenStreetMap, licence ODbL. Une requête par jeu de données, mise en cache. |
+| [OpenStreetMap](https://www.openstreetmap.org/copyright) (Nominatim, Overpass) | 10 communes d'Abidjan, 1 062 pharmacies | Limites des communes, et pharmacies cartographiées quand le serveur Overpass répond. Données © les contributeurs d'OpenStreetMap, licence ODbL. Une requête par jeu de données, mise en cache. |
 
 pharmacies-de-garde.ci est un site privé (« All rights reserved »). Son robots.txt autorise l'exploration, mais la réutilisation de ses données dans le produit doit être validée avec l'éditeur. Les sources officielles (AIRP, MUGEF-CI, CNAM) sont prioritaires quand elles couvrent le même besoin.
 
@@ -77,8 +77,8 @@ L'API trie les pharmacies par distance (`POST /v1/chat/location`) et donne l'iti
 - elle est identique, au mètre près, à celle d'une autre pharmacie de nom différent. Un point qui n'apparaît qu'une fois dans le registre AIRP appartient à l'officine AIRP correspondante : seules les autres sont signalées.
 
 **Relecture.**
-1. `uv run python -m heydoc_pipeline positions` écrit `data/out/review_positions.csv` : une ligne par position douteuse, la source de la position actuelle, les problèmes, et la meilleure autre position connue qui passe les contrôles (AIRP, autre fiche de l'annuaire, OpenStreetMap) avec un niveau de confiance. `haute` : position AIRP contrôlée sur les limites de commune, ou confirmée par une deuxième source à moins de 300 m. La colonne `accept` est préremplie à « oui » pour la confiance haute.
-2. Relire le fichier. `accept` = `oui` applique la position proposée, ou `corrected_lat`/`corrected_lng` s'ils sont remplis. `accept` = `garder` confirme la position actuelle. Vide : la position reste écartée. Une nouvelle exécution de `positions` garde les décisions qui diffèrent du préremplissage, tant que la pharmacie et sa position n'ont pas changé.
+1. `uv run python -m heydoc_pipeline positions` écrit `data/out/review_positions.csv` : une ligne par position douteuse, la source de la position actuelle, les problèmes, et la meilleure autre position connue qui passe les contrôles (AIRP, autre fiche de l'annuaire, OpenStreetMap) avec un niveau de confiance. `haute` : position AIRP contrôlée sur les limites de commune, ou confirmée par une deuxième source à moins de 300 m. La colonne `accept` reste vide : aucune correction n'est appliquée sans relecture, même en confiance haute.
+2. Relire le fichier. `accept` = `oui` applique la position proposée, ou `corrected_lat`/`corrected_lng` s'ils sont remplis. `accept` = `garder` confirme la position actuelle. Vide : la position reste écartée. Une nouvelle exécution de `positions` garde les décisions saisies, tant que la pharmacie et sa position n'ont pas changé.
 3. `load` applique les décisions, puis refait les contrôles. Une position encore douteuse reste sur l'établissement (`establishments`) avec le drapeau `position douteuse : …`, mais pas sur la pharmacie (`pharmacies.latitude` et `longitude` vides) : l'API ne la propose plus dans les pharmacies proches et ne donne pas d'itinéraire. Une position corrigée porte le drapeau `position corrigée après relecture (source), ancienne lat,lng` et la ligne relue est gardée dans `establishment_sources` (méthode `position_review`).
 
 ## Règles de rapprochement
@@ -103,7 +103,7 @@ L'API trie les pharmacies par distance (`POST /v1/chat/location`) et donne l'iti
 | | 48 + 11 | Gardes sans établissement connu ou ambiguës |
 | `review_products.csv` | 306 | Produits de 2022 absents de l'édition 2026 |
 | | 49 | Lignes de la décision CMU non rapprochées, souvent à cause de l'OCR |
-| `review_positions.csv` | 533 | Positions douteuses au 26/11/2026 : 247 propositions de confiance haute (toutes AIRP), 19 moyenne, 267 sans autre source. Après chargement, 247 positions corrigées et 324 écartées. |
+| `review_positions.csv` | 533 | Positions douteuses au 26/11/2026 : 252 propositions de confiance haute (247 AIRP, 5 annuaire confirmées par OpenStreetMap), 30 moyenne, 251 sans autre source. Tant qu'elles ne sont pas relues, les 533 positions sont écartées. |
 | `review_gmaps.csv` | 135 | Pharmacies sans GPS ou sans adresse et leur meilleur candidat Google Maps : 11 de confiance haute, 54 moyenne, 62 faible, 8 introuvables |
 | `data/staging/cmu_hta.csv` | 40 | Lignes OCR de confiance inférieure à 0,97, colonne `review` |
 
