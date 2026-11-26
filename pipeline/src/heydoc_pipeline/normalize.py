@@ -36,6 +36,12 @@ def commune_of(*texts: str | None) -> str | None:
     return None
 
 
+def communes_named(text: str | None) -> list[str]:
+    """Every Abidjan commune named in the text ('Plateau Dokoui - Cocody' names both)."""
+    t = f" {plain(text)} "
+    return list(dict.fromkeys(c for k, c in ABIDJAN_COMMUNES.items() if f" {plain(k)} " in t))
+
+
 def city_key(s: str | None) -> str:
     return plain(s).replace(" ", "-")
 
@@ -116,3 +122,40 @@ def label_key(label: str) -> str:
     """Label reduced to brand + numbers, used to compare editions written differently."""
     f = label_features(ocr_digits(label))
     return f"{f['brand']}|{' '.join(f['numbers'])}"
+
+
+# --- Plus codes (Open Location Code) in addresses ----------------------------------------
+
+_OLC = "23456789CFGHJMPQRVWX"
+_OLC_STEPS = [20.0, 1.0, 0.05, 0.0025, 0.000125]
+_PLUS_CODE = re.compile(r"(?<![0-9A-Z])([23456789CFGHJMPQRVWX]{2,8}\+[23456789CFGHJMPQRVWX]{2,3})(?![0-9A-Z])")
+
+
+def plus_code(text: str | None, ref_lat: float, ref_lng: float) -> tuple[float, float] | None:
+    """Centre of the first plus code in `text` ('8XXG+6F4, Abidjan'). A short code is completed
+    with the cell nearest to the reference point, which must be within half a degree."""
+    m = _PLUS_CODE.search((text or "").upper())
+    if not m:
+        return None
+    code = m.group(1)
+    head, tail = code.split("+")
+    if len(head) % 2:
+        return None
+    pad = 8 - len(head)
+    digits = head + tail[:2]
+    first = pad // 2
+    lat = lng = 0.0
+    for i in range(0, len(digits) - 1, 2):
+        step = _OLC_STEPS[first + i // 2]
+        lat += _OLC.index(digits[i]) * step
+        lng += _OLC.index(digits[i + 1]) * step
+    last = _OLC_STEPS[first + len(digits) // 2 - 1]
+    lat, lng = lat + last / 2, lng + last / 2
+    if pad == 0:
+        return round(lat - 90, 6), round(lng - 180, 6)
+    cell = _OLC_STEPS[first - 1]
+    lat += math.floor((ref_lat + 90) / cell) * cell - 90
+    lng += math.floor((ref_lng + 180) / cell) * cell - 180
+    lat += cell if ref_lat - cell / 2 > lat else -cell if ref_lat + cell / 2 < lat else 0
+    lng += cell if ref_lng - cell / 2 > lng else -cell if ref_lng + cell / 2 < lng else 0
+    return round(lat, 6), round(lng, 6)
