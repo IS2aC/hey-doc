@@ -9,6 +9,7 @@ STEPS = {
     "mugef": "mugef",
     "cmu-hta": "cmu_hta",
     "dedup": "dedup",
+    "positions": "positions",
     "load": "load",
     "gmaps-match": "gmaps",
 }

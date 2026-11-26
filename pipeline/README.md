@@ -10,7 +10,7 @@ uv sync --extra ocr
 uv run python -m heydoc_pipeline all
 ```
 
-Les étapes peuvent être lancées une par une : `site`, `airp`, `mugef`, `cmu-hta`, `dedup`, `load`, `gmaps-match` (hors `all`, voir plus bas). Avant `load`, la base doit avoir reçu les migrations : il suffit de démarrer l'API une fois (voir [api/README.md](../api/README.md)). `DATABASE_URL` désigne la base, par défaut la base locale de Docker Compose.
+Les étapes peuvent être lancées une par une : `site`, `airp`, `mugef`, `cmu-hta`, `dedup`, `positions`, `load`, `gmaps-match` (hors `all`, voir plus bas). Avant `load`, la base doit avoir reçu les migrations : il suffit de démarrer l'API une fois (voir [api/README.md](../api/README.md)). `DATABASE_URL` désigne la base, par défaut la base locale de Docker Compose.
 
 | Étape | Rôle | Durée |
 |---|---|---|
@@ -20,7 +20,8 @@ Les étapes peuvent être lancées une par une : `site`, `airp`, `mugef`, `cmu-h
 | `mugef` | Listes MUGEF-CI de septembre 2026 et novembre 2022 (PDF texte) | 25 s |
 | `cmu-hta` | Décision CMU HTA et diabète du 29/09/2025 (PDF scanné, OCR mis en cache) | 40 s la première fois |
 | `dedup` | Rapprochement des produits et des établissements | quelques secondes |
-| `load` | Rechargement complet des tables de référence, en une transaction. Applique les lignes acceptées de `review_gmaps.csv` s'il existe. | 15 s |
+| `positions` | Contrôle des positions GPS des pharmacies, propositions de correction dans `review_positions.csv` | quelques secondes (1 min 20 si OpenStreetMap ne répond pas) |
+| `load` | Rechargement complet des tables de référence, en une transaction. Applique les lignes acceptées de `review_gmaps.csv` et `review_positions.csv` s'ils existent. | 15 s |
 | `gmaps-match` | Rapprochement des résultats Google Maps avec les pharmacies sans GPS ou sans adresse | quelques secondes |
 
 Toutes les réponses HTTP sont mises en cache dans `data/cache/` et les requêtes vers un même site sont espacées de 1,5 s. Une collecte interrompue reprend sans redemander les pages déjà reçues. Pour rafraîchir les gardes chaque semaine, relancer `site --only duties`, puis `dedup` et `load` : la page des gardes est considérée périmée au bout de 6 heures.
@@ -43,6 +44,7 @@ uv run pytest
 | MUGEF-CI, novembre 2022 | 720 lignes | Code, libellé, groupe, DCI, catégorie, prix, régime CMU. |
 | Décision CMU n° 0016 du 29/09/2025 | 178 lignes (117 HTA, 61 diabète) | Molécule et dosage, spécialité, prix de la colonne « PRIX PUBLIC ». Texte de la décision dans `data/staging/cmu_hta_decision.txt`. |
 | Google Maps, recherche par officine | 135 pharmacies recherchées | Nom, catégorie, adresse, téléphone, GPS, identifiant de lieu. Seulement pour compléter les champs vides. |
+| [OpenStreetMap](https://www.openstreetmap.org/copyright) (Nominatim, Overpass) | 10 communes d'Abidjan | Limites des communes, et pharmacies cartographiées quand le serveur Overpass répond. Données © les contributeurs d'OpenStreetMap, licence ODbL. Une requête par jeu de données, mise en cache. |
 
 pharmacies-de-garde.ci est un site privé (« All rights reserved »). Son robots.txt autorise l'exploration, mais la réutilisation de ses données dans le produit doit être validée avec l'éditeur. Les sources officielles (AIRP, MUGEF-CI, CNAM) sont prioritaires quand elles couvrent le même besoin.
 
@@ -63,9 +65,25 @@ Dans PostgreSQL, `establishments` regroupe tous les établissements et `establis
 3. Relire le fichier et corriger `accept`.
 4. `load` applique les lignes acceptées en retrouvant l'établissement par `ref`. Il ne complète que les champs vides (GPS, adresse) et ajoute le téléphone s'il manque, sans jamais remplacer une valeur. Une position à plus de 30 km de la médiane de la ville est ignorée. La ligne relue est gardée dans `establishment_sources` (méthode `gmaps_search`, clé = identifiant de lieu Google).
 
+## Vérifier les positions des pharmacies
+
+L'API trie les pharmacies par distance (`POST /v1/chat/location`) et donne l'itinéraire vers chacune. Une position fausse envoie quelqu'un au mauvais endroit, donc une position douteuse n'est pas utilisée.
+
+**D'où viennent les erreurs.** L'annuaire pharmacies-de-garde.ci publie des positions souvent fausses : 23 fiches partagent le même point à Cocody, et la moitié des positions de l'annuaire sans plus code dans l'adresse tombent hors de la commune de l'adresse. Le rapprochement aggravait le problème : quand la position AIRP et celle de l'annuaire divergeaient de plus de 2 km, celle de l'annuaire était retenue. C'est le cas de la Pharmacie Schiba (Angré, placée au Plateau) et de la Pharmacie Locodjoro Sarl (Niangon, rattachée par erreur à une fiche de Locodjoro, à Attécoubé). Le registre AIRP contient aussi des points copiés d'une officine à l'autre, plus rarement.
+
+**Contrôles.** Une position est douteuse quand :
+- à Abidjan, elle tombe hors de la commune de la pharmacie ou de toute commune citée dans son adresse (limites OpenStreetMap, 300 m de tolérance) ; Anyama, Bingerville et Songon n'ont pas encore de limite et sont contrôlées comme les villes de l'intérieur ;
+- ailleurs, elle est à plus de 15 km de la médiane des pharmacies de la ville ;
+- elle est identique, au mètre près, à celle d'une autre pharmacie de nom différent. Un point qui n'apparaît qu'une fois dans le registre AIRP appartient à l'officine AIRP correspondante : seules les autres sont signalées.
+
+**Relecture.**
+1. `uv run python -m heydoc_pipeline positions` écrit `data/out/review_positions.csv` : une ligne par position douteuse, la source de la position actuelle, les problèmes, et la meilleure autre position connue qui passe les contrôles (AIRP, autre fiche de l'annuaire, OpenStreetMap) avec un niveau de confiance. `haute` : position AIRP contrôlée sur les limites de commune, ou confirmée par une deuxième source à moins de 300 m. La colonne `accept` est préremplie à « oui » pour la confiance haute.
+2. Relire le fichier. `accept` = `oui` applique la position proposée, ou `corrected_lat`/`corrected_lng` s'ils sont remplis. `accept` = `garder` confirme la position actuelle. Vide : la position reste écartée. Une nouvelle exécution de `positions` garde les décisions qui diffèrent du préremplissage, tant que la pharmacie et sa position n'ont pas changé.
+3. `load` applique les décisions, puis refait les contrôles. Une position encore douteuse reste sur l'établissement (`establishments`) avec le drapeau `position douteuse : …`, mais pas sur la pharmacie (`pharmacies.latitude` et `longitude` vides) : l'API ne la propose plus dans les pharmacies proches et ne donne pas d'itinéraire. Une position corrigée porte le drapeau `position corrigée après relecture (source), ancienne lat,lng` et la ligne relue est gardée dans `establishment_sources` (méthode `position_review`).
+
 ## Règles de rapprochement
 
-**Établissements.** Le registre AIRP sert de référence pour les officines. Une fiche de l'annuaire y est rattachée si son nom est proche dans la même ville, ou si elle est très proche en GPS avec un nom voisin. Le site publie souvent la même officine plusieurs fois : toutes ses fiches rejoignent le même établissement. Un point AIRP à plus de 30 km de la médiane de sa ville est signalé. Quand les deux positions divergent de plus de 2 km, la position de l'annuaire est retenue et l'écart est noté. Une garde est rattachée par téléphone, sinon par nom dans la même ville en départageant par commune. Les noms sont comparés sans accents, ponctuation ni mots génériques (pharmacie, grande, nouvelle, de la…). Les numéros à 8 chiffres sont convertis au format à 10 chiffres.
+**Établissements.** Le registre AIRP sert de référence pour les officines. Une fiche de l'annuaire y est rattachée si son nom est proche dans la même ville, ou si elle est très proche en GPS avec un nom voisin. Le site publie souvent la même officine plusieurs fois : toutes ses fiches rejoignent le même établissement. Un point AIRP à plus de 30 km de la médiane de sa ville est signalé. Quand les deux positions divergent de plus de 2 km, la position de l'annuaire est retenue et l'écart est noté ; l'étape `positions` contrôle ensuite le choix. Une garde est rattachée par téléphone, sinon par nom dans la même ville en départageant par commune. Les noms sont comparés sans accents, ponctuation ni mots génériques (pharmacie, grande, nouvelle, de la…). Les numéros à 8 chiffres sont convertis au format à 10 chiffres.
 
 **Produits.** La liste MUGEF-CI 2026 sert de référence. Les prix du site sont rattachés par code. Les éditions écrites autrement (2022, liste CMU du site, décision CMU) sont rapprochées par marque et nombres du libellé (dosages et conditionnement), puis départagées par DCI ou par les autres mots. Les lettres O lues à la place de zéros par l'OCR sont corrigées pour la comparaison seulement.
 
@@ -85,6 +103,7 @@ Dans PostgreSQL, `establishments` regroupe tous les établissements et `establis
 | | 48 + 11 | Gardes sans établissement connu ou ambiguës |
 | `review_products.csv` | 306 | Produits de 2022 absents de l'édition 2026 |
 | | 49 | Lignes de la décision CMU non rapprochées, souvent à cause de l'OCR |
+| `review_positions.csv` | 533 | Positions douteuses au 26/11/2026 : 247 propositions de confiance haute (toutes AIRP), 19 moyenne, 267 sans autre source. Après chargement, 247 positions corrigées et 324 écartées. |
 | `review_gmaps.csv` | 135 | Pharmacies sans GPS ou sans adresse et leur meilleur candidat Google Maps : 11 de confiance haute, 54 moyenne, 62 faible, 8 introuvables |
 | `data/staging/cmu_hta.csv` | 40 | Lignes OCR de confiance inférieure à 0,97, colonne `review` |
 

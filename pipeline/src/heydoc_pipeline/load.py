@@ -34,6 +34,7 @@ SOURCES = {
     "cmu-hta-2025": ("AIRP/CNAM/DGCMU", "Décision n° 0016 du 29/09/2025, médicaments du diabète et de l'HTA", date(2025, 9, 29), None, "document officiel (OCR)"),
     # Reference completed with the collection date at load time.
     "gmaps": ("Google", "Google Maps (recherche par officine)", None, "https://www.google.com/maps", "web"),
+    "relecture-positions": ("Hey-Doc", "Relecture des positions des pharmacies (review_positions.csv)", None, None, "relecture"),
 }
 GMAPS_REVIEW = OUT / "review_gmaps.csv"
 GMAPS_RESULTS = DATA / "gmaps" / "results.csv"
@@ -123,6 +124,59 @@ def apply_gmaps(ests: list[dict], review: list[dict]) -> tuple[list[dict], dict[
     return links, dict(counts)
 
 
+def apply_positions(ests: list[dict], links: list[dict], communes) -> tuple[list[dict], dict[str, int], set[str]]:
+    """Apply the decisions of review_positions.csv to `ests` (changed in place), then flag the
+    pharmacies whose position is still doubtful. Returns the review links, the counts and the
+    references of the doubtful pharmacies, whose position the API must not use.
+
+    `accept` = oui: the proposed position, or corrected_lat/corrected_lng when filled, replaces the
+    current one. `accept` = garder: the current position is right. A decision is ignored when the
+    pharmacy behind `ref` or its position changed since the review.
+    """
+    from .positions import REVIEW, checker, point
+
+    by_ref = {e["est_id"]: e for e in ests}
+    out, counts, reviewed = [], defaultdict(int), set()
+    for r in read_csv(REVIEW) if REVIEW.exists() else []:
+        accept = (r.get("accept") or "").strip().lower()
+        if accept not in ("oui", "garder"):
+            continue
+        e = by_ref.get(r["ref"])
+        if e is None or e["name"] != r["name"]:
+            counts["référence changée depuis la relecture"] += 1
+            continue
+        if not (e["lat"] and point(e["lat"], e["lng"]) == point(r["lat"], r["lng"])):
+            counts["position changée depuis la relecture"] += 1
+            continue
+        flags = [f for f in e["flags"].split(" ; ") if f]
+        if accept == "garder":
+            flags.append("position confirmée après relecture")
+            counts["positions confirmées"] += 1
+        else:
+            manual = bool(r.get("corrected_lat") or r.get("corrected_lng"))
+            lat = norm_coord(r.get("corrected_lat") if manual else r.get("proposed_lat"), -90, 90)
+            lng = norm_coord(r.get("corrected_lng") if manual else r.get("proposed_lng"), -180, 180)
+            if not (lat and lng and 4 <= float(lat) <= 11 and -9 <= float(lng) <= -2):
+                counts["position corrigée absente ou hors de Côte d'Ivoire"] += 1
+                continue
+            source = "saisie manuelle" if manual else r["proposed_source"]
+            e["lat"], e["lng"] = lat, lng
+            flags.append(f"position corrigée après relecture ({source}), ancienne {r['lat']},{r['lng']}")
+            counts["positions corrigées"] += 1
+        e["flags"] = " ; ".join(flags)
+        reviewed.add(e["est_id"])
+        out.append({"est_id": e["est_id"], "data": {k: v for k, v in r.items() if v not in (None, "")}})
+
+    check = checker(ests, links, communes)
+    doubtful = set()
+    for e in ests:
+        if e["kind"] == "pharmacie" and e["est_id"] not in reviewed and (issues := check.issues(e)):
+            doubtful.add(e["est_id"])
+            e["flags"] = " ; ".join([*(f for f in e["flags"].split(" ; ") if f), "position douteuse : " + ", ".join(issues)])
+    counts["positions douteuses écartées"] = len(doubtful)
+    return out, dict(counts), doubtful
+
+
 def run() -> None:
     url = os.environ.get("DATABASE_URL", DEFAULT_URL)
     ests = read_csv(OUT / "establishments.csv")
@@ -139,6 +193,8 @@ def run() -> None:
     }
     week_start = date.fromisoformat(duties[0]["week_start"]) if duties else None
     gmaps_links, gmaps_counts = apply_gmaps(ests, read_csv(GMAPS_REVIEW)) if GMAPS_REVIEW.exists() else ([], {})
+    from .positions import load_communes
+    position_links, position_counts, doubtful = apply_positions(ests, est_links, load_communes())
     collected = GMAPS_RESULTS if GMAPS_RESULTS.exists() else GMAPS_REVIEW
     gmaps_date = date.fromtimestamp(collected.stat().st_mtime) if collected.exists() else None
 
@@ -182,6 +238,11 @@ def run() -> None:
                    VALUES (%s,%s,%s,'gmaps_search',%s,%s,%s) ON CONFLICT DO NOTHING""",
                 (est_id[l["est_id"]], src["gmaps"], l["record_key"], l["match_score"],
                  round(float(l["distance_m"])) if l["distance_m"] else None, Jsonb(l["data"])))
+        for l in position_links:
+            cur.execute(
+                """INSERT INTO establishment_sources (establishment_id, source_id, record_key, match_method, data)
+                   VALUES (%s,%s,%s,'position_review',%s)""",
+                (est_id[l["est_id"]], src["relecture-positions"], l["est_id"], Jsonb(l["data"])))
 
         # Operational pharmacies (used by the API) are grouped by sector: commune in Abidjan, town elsewhere.
         sector_id: dict[tuple[str, str], int] = {}
@@ -194,16 +255,18 @@ def run() -> None:
                 sector_id[(city, district)] = cur.fetchone()[0]
             return sector_id[(city, district)]
 
+        # A doubtful position stays on the establishment, with its flag, but not on the pharmacy:
+        # the API sorts pharmacies by distance and gives directions from this position.
         pharmacy: dict[str, tuple[int, int]] = {}
         for e in ests:
             if e["kind"] != "pharmacie":
                 continue
             sid = sector(e["city"], e["commune"])
+            lat, lng = (None, None) if e["est_id"] in doubtful else (_num(e["lat"]), _num(e["lng"]))
             cur.execute(
                 """INSERT INTO pharmacies (sector_id, name, phone, address, latitude, longitude, establishment_id)
                    VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
-                (sid, e["name"], (e["phones"].split() or [None])[0], _num(e["address"]), _num(e["lat"]), _num(e["lng"]),
-                 est_id[e["est_id"]]))
+                (sid, e["name"], (e["phones"].split() or [None])[0], _num(e["address"]), lat, lng, est_id[e["est_id"]]))
             pharmacy[e["est_id"]] = (cur.fetchone()[0], sid)
 
         if duties and week_start:
@@ -278,5 +341,6 @@ def run() -> None:
               f"{pr} présentations, {px} prix, {cov} couvertures, {links} enregistrements sources")
         for k, v in skipped.items():
             print(f"  ignoré : {v} {k}")
+        print("  positions : " + ", ".join(f"{k} {v}" for k, v in sorted(position_counts.items())))
         if gmaps_counts:
             print("  Google Maps : " + ", ".join(f"{k} {v}" for k, v in sorted(gmaps_counts.items())))
